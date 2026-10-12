@@ -4,6 +4,8 @@ Once a TV is off, its WebSocket is gone, so nothing over SSAP can wake it.
 A magic packet (six 0xFF bytes, then the MAC sixteen times) sent over UDP
 wakes it, provided its "TV On With Mobile" / "Mobile TV On" / "Turn on via
 Wi-Fi" setting is on (ASSUMPTION W-WOL; the name varies by generation).
+Older sets (the C7) may only wake over Ethernet, with LG Connect Apps on
+(ASSUMPTION W-WOL-PATH).
 
 Each packet goes two ways, an idea from lgtv-mcp: to the broadcast address
 (the classic route, which only reaches the TVs' own network segment) and

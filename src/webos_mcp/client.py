@@ -27,6 +27,8 @@ this class does about it:
     by SSDP and recognizes it only by the deviceUUID `pair` saved
     (ASSUMPTION W-UUID-STABLE). The same search runs every 5 minutes while
     the TV has been unreachable for over a minute. Never guess a device.
+  - Home Assistant (or LG's phone app) may hold its own connection to the same
+    TV at the same time; each client pairs separately (ASSUMPTION W-MULTI-CLIENT).
   - Log lines only on a change of state ("reachable -> unreachable"), not on
     every failed attempt against a TV that is simply off.
 """
