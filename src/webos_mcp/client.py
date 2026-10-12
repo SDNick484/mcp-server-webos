@@ -410,6 +410,15 @@ class TvClient:
                 return host
         return None
 
+    async def connect_once(self, timeout: float = 10.0) -> bool:
+        """One attempt, outside the supervisor (the `check` command)."""
+        key = keystore.get(self.tv.uuid)
+        if key is None:
+            self.needs_pairing = True
+            self.error = "not paired"
+            return False
+        return await self._attempt(key, timeout)
+
     async def refresh(self) -> None:
         """get_status's bounded refresh of a stale TV: one try, at most refresh_timeout."""
         if self.reachable or self.needs_pairing or time.monotonic() - self.last_attempt < self.refresh_min_age:
