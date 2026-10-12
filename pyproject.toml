@@ -1,0 +1,61 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mcp-server-webos"
+version = "0.1.0"
+description = "MCP server for LG webOS TVs (SSAP over WebSocket, via aiowebostv) with a one-time pairing CLI"
+readme = "README.md"
+license = { text = "MIT" }
+authors = [{ name = "Nicholas E. Andrade" }]
+requires-python = ">=3.11"
+keywords = ["mcp", "mcp-server", "lg", "webos", "lg-tv", "oled", "home-automation"]
+classifiers = [
+    "Development Status :: 2 - Pre-Alpha",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Topic :: Home Automation",
+]
+dependencies = [
+    "mcp>=2.3,<3",
+    # The TV's SSAP protocol, as Home Assistant speaks it. >=0.9.2: the unsigned
+    # registration manifest webOS 26 requires (ASSUMPTION W-SIGNED-403). <0.11:
+    # compat.py overrides two of its private methods, so a new minor version has
+    # to pass tests/test_compat.py before this bound moves.
+    "aiowebostv>=0.9.2,<0.11",
+    "typing_extensions>=4.7",
+    "pyjwt[crypto]>=2.10",   # verifying Cloudflare Access assertions (remote.py); cryptography also makes the simulator's cert
+    "uvicorn>=0.31",         # the HTTP transport (remote.py)
+]
+
+[project.urls]
+Homepage = "https://github.com/SDNick484/mcp-server-webos"
+Issues = "https://github.com/SDNick484/mcp-server-webos/issues"
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "anyio>=4", "ruff>=0.6", "mypy>=1.11", "httpx2"]
+
+[project.scripts]
+mcp-server-webos = "webos_mcp.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+webos_mcp = ["sim/fixtures/*.json"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 120
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+# pycodestyle, pyflakes, isort, pyupgrade, bugbear, simplify
+select = ["E", "W", "F", "I", "UP", "B", "SIM"]
+
+[tool.mypy]
+files = ["src"]
+strict = true
