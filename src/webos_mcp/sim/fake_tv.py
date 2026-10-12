@@ -74,6 +74,7 @@ class Faults:
     slow: float = 0.0  # seconds before every reply
     garble_next: bool = False  # send one frame that isn't JSON, once
     prompt_then_registered: bool = False  # a known key still gets PROMPT, then "registered" at once
+    reject_registration: str | None = None  # answer every registration with this error, before any dialog
 
 
 @dataclass
@@ -356,6 +357,9 @@ class FakeTv:
         signed = bool(manifest.get("signatures") or manifest.get("signed"))
         key = payload.get("client-key")
         self.journal.append(("register", {"signed": signed, "with_key": bool(key)}))
+        if self.faults.reject_registration:
+            await ws.send_json({"type": "error", "id": uid, "error": self.faults.reject_registration, "payload": {}})
+            return False
         if signed and self.profile.blacklist_signature:
             # Before any dialog, and before looking at the key (ASSUMPTION W-SIGNED-403)
             await ws.send_json({"type": "error", "id": uid, "error": BLACKLISTED, "payload": {}})
@@ -376,15 +380,19 @@ class FakeTv:
         if self.pairing == "ignore":
             return False
         await asyncio.sleep(self.accept_after)
-        if ws.closed:
-            self.journal.append(("prompt-dismissed",))  # ASSUMPTION W-PROMPT-DISMISS
+        try:
+            if ws.closed:
+                raise ConnectionResetError
+            if self.pairing == "decline":
+                await ws.send_json({"type": "error", "id": uid, "error": DECLINED, "payload": {}})
+                return False
+            new_key = secrets.token_hex(16)
+            await ws.send_json({"type": "registered", "id": uid, "payload": {"client-key": new_key}})
+        except (ConnectionResetError, OSError):
+            # The client hung up while the dialog was up: it goes away (ASSUMPTION W-PROMPT-DISMISS)
+            self.journal.append(("prompt-dismissed",))
             return False
-        if self.pairing == "decline":
-            await ws.send_json({"type": "error", "id": uid, "error": DECLINED, "payload": {}})
-            return False
-        new_key = secrets.token_hex(16)
         self.keys.add(new_key)
-        await ws.send_json({"type": "registered", "id": uid, "payload": {"client-key": new_key}})
         return True
 
     async def _request(
