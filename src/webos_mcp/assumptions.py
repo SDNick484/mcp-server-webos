@@ -1,0 +1,315 @@
+"""Every protocol detail this server relies on, and whether a real TV has confirmed it.
+
+Why a registry instead of comments: a comment saying "unverified" is easy to
+miss and never goes away. Here each claim has an id that:
+  - code cites next to where it depends on it (``ASSUMPTION W-PORTS``),
+  - HARDWARE_VALIDATION.md cites in the step that confirms it,
+  - the README's verification table lists, with its status,
+  - ``mcp-server-webos doctor`` prints.
+
+tests/test_assumptions.py fails if they drift apart.
+
+Nothing here has been seen on the owner's TVs yet (a 2017 C7, a 2021 G1 and a
+2025 C5): the whole server was built away from them. Every claim is what the
+simulator (sim/fake_tv.py) implements, and the source says where it came from.
+
+To record a hardware result, change ``status`` to "hardware-verified" (or
+"hardware-contradicted", with what you saw in ``note``) and commit it. Several
+claims differ per TV; ``note`` says which TV a result was seen on.
+
+Confidence is about the *claim*, judged from its source:
+  high   - what aiowebostv (used by Home Assistant against a large install base)
+           does and depends on, or a capture someone published from real hardware
+  medium - from another project or from LG's documentation, not seen here
+  low    - our own guess, or reports that contradict each other; the simulator
+           implements it but nothing confirms it
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Literal
+
+Confidence = Literal["high", "medium", "low"]
+Status = Literal["simulator-only", "hardware-verified", "hardware-contradicted"]
+
+
+@dataclass(frozen=True)
+class Assumption:
+    id: str
+    claim: str
+    source: str
+    confidence: Confidence
+    status: Status = "simulator-only"
+    note: str = ""
+
+
+ASSUMPTIONS: tuple[Assumption, ...] = (
+    # --- pairing ------------------------------------------------------------------------
+    Assumption(
+        "W-MANIFEST",
+        "An unsigned registration manifest (every permission in the outer list, no signatures block) pairs on "
+        "webOS 3.5, 6, 25 and 26, and grants what this server uses.",
+        "aiowebostv 0.9.2 switched to it (diff of handshake.py 0.9.1 -> 0.9.2); Home Assistant core issue "
+        "#172703 reports it working on webOS 26 sets (G5, C2, G3) with no other change",
+        "high",
+        note="High for webOS 26 (published captures). For webOS 3.5 and 6 it rests on HA shipping it to every "
+        "install in 2026.8; no C7 or G1 report seen.",
+    ),
+    Assumption(
+        "W-SIGNED-403",
+        "webOS 26 rejects the old signed manifest (appId com.lge.test plus LG's test-signing signature) with "
+        "the error '403 Pairing rejected: blacklisted certificate detected', before showing any dialog.",
+        "HA core issue #172703 (websocket captures from a G5 on 11.2.0); lgpowercontrol v4.4 release notes",
+        "high",
+        note="Matters only for the C5 after it takes webOS 26. This server never sends a signed manifest; the "
+        "simulator's c5-webos26 profile rejects one so a regression would show.",
+    ),
+    Assumption(
+        "W-KEY-SURVIVES",
+        "A client key paired while the C5 runs webOS 25 still works after it updates to webOS 26.",
+        "HA core issue #172703: contradictory reports (one G5's pre-update key was rejected; other users needed "
+        "no re-pairing)",
+        "low",
+        note="If it doesn't survive, the server reports needs_pairing (W-STALE-KEY) rather than looping.",
+    ),
+    Assumption(
+        "W-REGISTERED-DIRECT",
+        "A registration carrying a client key the TV knows is answered with type 'registered' at once, with no dialog.",
+        "aiowebostv's _check_registration only waits for a second message after a PROMPT response",
+        "high",
+        note="compat.py also accepts a PROMPT followed promptly by 'registered', in case a TV does that.",
+    ),
+    Assumption(
+        "W-STALE-KEY",
+        "A registration carrying a key the TV doesn't know is answered with pairingType PROMPT, and the TV "
+        "shows the pairing dialog.",
+        "how every SSAP client pairs (aiowebostv, bscpylgtv, LGTVCompanion): the PROMPT flow is the only one",
+        "medium",
+        note="The server treats it as 'needs pairing' and stops retrying, so it can't keep showing dialogs.",
+    ),
+    Assumption(
+        "W-PROMPT-DISMISS",
+        "Closing the connection while the pairing dialog is up removes the dialog from the screen.",
+        "none: a guess, and what doctor and the server rely on when a stored key is refused",
+        "low",
+        note="If the dialog stays, it's one dialog, not a loop; HARDWARE_VALIDATION step 3 checks.",
+    ),
+    Assumption(
+        "W-PAIR-WINDOW",
+        "The TV keeps the pairing dialog up for at least 30 s, longer than aiowebostv's own 10 s wait; `pair` "
+        "waits up to 60 s.",
+        "none for the TV's side; aiowebostv 0.10.0 waits RECEIVE_TIMEOUT = 10 s",
+        "low",
+    ),
+    Assumption(
+        "W-HELLO-VERSION",
+        "The unauthenticated hello reply carries deviceOSReleaseVersion (10.x on webOS 25, 11.x on webOS 26), "
+        "deviceUUID and pairingTypes, so the platform is known without a key.",
+        "HA core issue #172703 debug log (a G5 on webOS 26: 11.2.0); a C5 owner there reports 10.3.1 on webOS 25",
+        "high",
+        note="High for the C5; what the C7 (webOS 3.5) and G1 (webOS 6) put in these fields is unknown.",
+    ),
+    Assumption(
+        "W-SWINFO-401",
+        "com.webos.service.update/getCurrentSWInformation answers 401 to an unsigned-manifest key on webOS 26; "
+        "aiowebostv >=0.9.2 ignores that, and this server never needs it.",
+        "HA core issue #172703 (G5, 11.2.0); aiowebostv 0.9.2's suppress() around get_software_info",
+        "high",
+    ),
+    Assumption(
+        "W-UUID-STABLE",
+        "deviceUUID in the hello stays the same across address changes, reboots and firmware updates, so it "
+        "identifies the TV.",
+        "none seen; Home Assistant identifies webOS TVs by it",
+        "medium",
+        note="Rediscovery and the 'same TV at this address' check depend on it.",
+    ),
+    # --- transport ----------------------------------------------------------------------
+    Assumption(
+        "W-PORTS",
+        "The C7 answers plain WebSocket on port 3000 only; the G1 and C5 answer TLS WebSocket on 3001 only.",
+        "LGWebOSRemote README (TLS required from January 2023 firmware; a C1 listed as ssl); an RTI driver's "
+        "notes (3000 only for 2014-2017 sets)",
+        "medium",
+    ),
+    Assumption(
+        "W-PORT3000-CLOSE",
+        "The newest firmware accepts a TCP connection on 3000 and then closes it, which aiowebostv treats as a "
+        "reason to try 3001. A port that accepts and then says nothing is not: aiowebostv only falls back on a "
+        "refused connection or a failed handshake, never on a timeout.",
+        "HA core issue #172703 (a 2026 C6 on 43.21.60); aiowebostv 0.10.0 _create_main_ws",
+        "medium",
+        note="The library's half is certain (the simulator's blackhole test shows it). The C5's own behavior "
+        "on 3000 is unknown.",
+    ),
+    Assumption(
+        "W-TLS-CERT",
+        "The TV's TLS certificate on 3001 is self-signed and the same across reboots; a firmware update may change it.",
+        "none: aiowebostv connects with verification off because the certificate isn't trusted",
+        "low",
+        note="The server only warns when the fingerprint `pair` saved changes; it never blocks on it.",
+    ),
+    Assumption(
+        "W-MULTI-CLIENT",
+        "Home Assistant and this server can be connected to the same TV at the same time.",
+        "none seen; LG's own phone app works alongside Home Assistant",
+        "medium",
+    ),
+    # --- what connect() needs -----------------------------------------------------------
+    Assumption(
+        "W-INPUT-SOCKET",
+        "getPointerInputSocket (needed for button presses) is granted to an unsigned-manifest key on all three TVs.",
+        "HA core issue #172703 (a G5 on webOS 26 and a C2 pressing buttons); LGTVCompanion issue #351 (401 on "
+        "43.x firmware until permissions moved to the outer list, which is what aiowebostv 0.9.2 sends)",
+        "medium",
+        note="If one refuses it, compat.py keeps the connection without buttons instead of failing it all.",
+    ),
+    Assumption(
+        "W-SUBSCRIBE",
+        "The eight state subscriptions aiowebostv opens on connect each succeed or answer 404; any other error "
+        "(e.g. 401) fails the whole connection.",
+        "aiowebostv 0.10.0 _get_states_and_subscribe_state_updates (only WebOsTvServiceNotFoundError is suppressed)",
+        "high",
+        note="The library half is certain; that the TVs only ever answer 404 is not.",
+    ),
+    # --- power --------------------------------------------------------------------------
+    Assumption(
+        "W-POWER-STATES",
+        "getPowerState reports one of Active, Screen Off, Screen Saver, Active Standby, Suspend (or Power Off), "
+        "with processing 'Screen On' while waking.",
+        "lgpowercontrol's virtual TV (strings observed on an OLED42C35LA, 2026-08); aiowebostv _is_tv_on",
+        "high",
+        note="High for the newer TVs; the C7 probably has no getPowerState (W-C7-NO-POWERSTATE).",
+    ),
+    Assumption(
+        "W-C7-NO-POWERSTATE",
+        "The C7 answers 404 to getPowerState; aiowebostv then treats the TV as on whenever an app is in front.",
+        "aiowebostv 0.7.2 and 0.7.3 'power state for older webOS' fixes",
+        "low",
+    ),
+    Assumption(
+        "W-STANDBY-SOCKET",
+        "With Quick Start+ (Always Ready on newer sets), the WebSocket stays up after power off and reports "
+        "Active Standby; without it the TV closes the connection.",
+        "aiowebostv's state handling; lgpowercontrol marks deep-standby behavior as guessed",
+        "low",
+    ),
+    Assumption(
+        "W-OFF-GUARD",
+        "system/turnOff sent to a TV that is already in standby can turn it back on, which is why aiowebostv's "
+        "power_off() does nothing unless it thinks the TV is on.",
+        "aiowebostv power_off() comment",
+        "low",
+        note="The server checks first too, and reports 'unchanged'.",
+    ),
+    Assumption(
+        "W-TURNON-DEAD",
+        "system/turnOn doesn't wake newer webOS TVs, so Wake-on-LAN is the only way to turn one on.",
+        "bscpylgtv's power_on docstring",
+        "medium",
+    ),
+    Assumption(
+        "W-WOL",
+        "A magic packet to UDP port 9 wakes each TV once its 'TV On With Mobile' / 'Mobile TV On' / 'Turn on "
+        "via Wi-Fi' setting is on.",
+        "Home Assistant webostv docs; lgtv-mcp; lgpowercontrol",
+        "medium",
+        note="Home Assistant has no Wake-on-LAN set up for these TVs, so it is unproven on all three.",
+    ),
+    Assumption(
+        "W-WOL-PATH",
+        "The C7 wakes only over Ethernet with LG Connect Apps on; the G1 and C5 also wake over Wi-Fi.",
+        "Home Assistant webostv docs (webOS 3 era)",
+        "low",
+    ),
+    Assumption(
+        "W-WAKE-TIME",
+        "A TV is awake about 4 s after a magic packet from Active Standby, and about 5 s from deep standby.",
+        "lgpowercontrol (measured on a C3)",
+        "medium",
+        note="set_power waits up to 20 s before calling the result unconfirmed.",
+    ),
+    Assumption(
+        "W-MAC-SOURCE",
+        "connectionmanager/getinfo (aiowebostv tv_info.connection) carries the TV's MAC addresses, as "
+        "wiredInfo/wifiInfo macAddress, with a state saying which is connected.",
+        "aiowebostv 0.10.0 reads the endpoint; the reply's shape is a guess",
+        "low",
+        note="`pair --mac` sets it by hand if this is wrong.",
+    ),
+    Assumption(
+        "W-SCREEN-OFF",
+        "com.webos.service.tvpower/power/turnOffScreen (com.webos.service.tv.power/turnOffScreen on webOS 4) "
+        "blanks the screen with standbyMode 'active', and turnOnScreen undoes it; standbyMode 'passive' can't be "
+        "undone without unplugging the TV.",
+        "aiowebostv and bscpylgtv endpoints; bscpylgtv's turn_screen_off docstring for 'passive'",
+        "medium",
+        note="Likely absent on the C7 (webOS 3.5): set_screen then says so. 'passive' is never sent.",
+    ),
+    # --- control ------------------------------------------------------------------------
+    Assumption(
+        "W-KEYS",
+        "The allow-listed button names act on all three TVs over the pointer socket; IN_START and EZ_ADJUST "
+        "open service menus.",
+        "aiowebostv buttons.py; bscpylgtv buttons.py (its comments name the service menus)",
+        "medium",
+    ),
+    Assumption(
+        "W-MEDIA-CONTROLS",
+        "media.controls/play, pause, stop, rewind and fastForward act on streaming apps (Netflix, YouTube) as "
+        "well as the TV's own player.",
+        "none: a guess",
+        "low",
+        note="If an app ignores them, send_key PLAY/PAUSE is the fallback.",
+    ),
+    Assumption(
+        "W-NOW-PLAYING",
+        "com.webos.media/getForegroundAppInfo gives the app and a playState (e.g. playing, paused), and no title.",
+        "aiowebostv's media_state; lgtv-mcp",
+        "medium",
+    ),
+    Assumption(
+        "W-SOUND-OUTPUT",
+        "soundOutput reads external_arc (or another external_* value) with the receiver on eARC/ARC, and "
+        "tv_speaker on the TV's own speakers.",
+        "aiowebostv (special-cases external_arc); lgtv-mcp's fakes",
+        "medium",
+    ),
+    Assumption(
+        "W-VOLUME-ARC",
+        "With an external sound output, the TV forwards its volume commands to the receiver over HDMI-CEC, so "
+        "TV volume would bypass the Onkyo server's caps.",
+        "aiowebostv delays consecutive volume steps on external_arc for this reason",
+        "medium",
+    ),
+    Assumption(
+        "W-APP-IDS",
+        "The default allow-list's app ids (netflix, youtube.leanback.v4, amazon, ...) match what listLaunchPoints "
+        "reports on each TV.",
+        "lgtv-mcp's fakes and community lists; to be replaced by ids captured from the TVs",
+        "low",
+        note="A wrong id is harmless: only allow-listed ids the TV itself lists are offered.",
+    ),
+    Assumption(
+        "W-INPUT-IDS",
+        "Inputs are listed as id HDMI_n with appId com.webos.app.hdmiN, the user's label and a connected flag; "
+        "switching to one brings that appId to the foreground.",
+        "lgtv-mcp's fakes; Home Assistant's source handling",
+        "medium",
+    ),
+    Assumption(
+        "W-SSDP",
+        "An awake TV answers an SSDP M-SEARCH for urn:lge-com:service:webos-second-screen:1 with a LOCATION on "
+        "its own address.",
+        "lgtv-mcp discovery; Home Assistant's webostv SSDP matcher",
+        "medium",
+        note="A TV that is off doesn't answer, so rediscovery only finds a TV once it is on.",
+    ),
+)
+
+BY_ID = {a.id: a for a in ASSUMPTIONS}
+
+
+def unverified() -> list[Assumption]:
+    return [a for a in ASSUMPTIONS if a.status != "hardware-verified"]
