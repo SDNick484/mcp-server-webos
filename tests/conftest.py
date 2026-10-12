@@ -20,3 +20,27 @@ def home(tmp_path, monkeypatch):
     monkeypatch.setenv("WEBOS_CONFIG_DIR", str(d))
     monkeypatch.delenv("WEBOS_DRY_RUN", raising=False)
     return d
+
+
+# --- simulated TVs ------------------------------------------------------------
+# Each profile gets its own loopback address, so its fake TV can bind the real
+# ports 3000/3001 that aiowebostv always dials (see sim/fake_tv.py).
+HOSTS = {"c7": "127.0.0.2", "g1": "127.0.0.3", "c5-webos25": "127.0.0.4", "c5-webos26": "127.0.0.5"}
+
+
+@pytest.fixture
+async def tvs():
+    """Start simulated TVs on demand: ``tv = await tvs("g1")``. All are stopped afterwards."""
+    from webos_mcp.sim.fake_tv import make
+
+    started = []
+
+    async def start(profile: str, **kwargs):
+        tv = make(profile, HOSTS[profile], **kwargs)
+        await tv.start()
+        started.append(tv)
+        return tv
+
+    yield start
+    for tv in started:
+        await tv.stop()
