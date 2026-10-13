@@ -1,8 +1,7 @@
 """Stopping background tasks reliably.
 
-Copied from mcp-server-sofabaton (mqtt.py, on its fix-mqtt-shutdown-hang
-branch), where it fixed a shutdown hang. It isn't one of the byte-identical
-shared modules yet; if it becomes one, this file is the copy to replace.
+Shared by the sibling servers, byte for byte. Change it in mcp-server-shared,
+not in a copy, then sync (`python scripts/sync_shared.py --update`).
 """
 
 from __future__ import annotations
