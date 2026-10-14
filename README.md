@@ -208,7 +208,8 @@ CF_ACCESS_TEAM_DOMAIN=<team>.cloudflareaccess.com CF_ACCESS_AUD=<aud tag> \
 With Access configured, every request needs a valid `Cf-Access-Jwt-Assertion`; anything else
 gets a plain 403. The server refuses to start on a non-loopback address without Access unless
 you pass `--insecure-no-auth`. `GET /healthz` answers without auth. `remote.py` and `logsafe.py`
-are byte-identical with mcp-server-shieldtv and mcp-server-onkyo.
+are shared with the sibling servers, from
+[mcp-server-shared](https://github.com/SDNick484/mcp-server-shared).
 
 ### As a service on Alpine (Proxmox LXC)
 

@@ -25,23 +25,27 @@ Targets: the owner's 2017 C7 (webOS 3.5, Bedroom), 2021 G1 (webOS 6.0, Family Ro
   capabilities, rediscovery, and every action (`_call` asserts dry run is off)
 - `src/webos_mcp/server.py`: the ten tools (`MCPServer` from `mcp` 2.x), `ActionResult`,
   resources (`webos://...`), the `watch` prompt
-- `src/webos_mcp/probe.py` (keyless hello), `wol.py`, `discovery.py` (SSDP), `tasks.py`
-  (`stop_task`, from mcp-server-sofabaton's fix-mqtt-shutdown-hang branch)
+- `src/webos_mcp/probe.py` (keyless hello), `wol.py`, `discovery.py` (SSDP)
 - `src/webos_mcp/assumptions.py`: every protocol detail relied on (W-* ids). Cite ids in code
   (`ASSUMPTION W-...`); `tests/test_assumptions.py` keeps code, README and HARDWARE_VALIDATION.md
   in step with it
 - `src/webos_mcp/cli.py`: `serve` (default), `pair`, `check`, `discover`, `doctor` (`doctor.py`),
   `capture` (`capture.py`), `simulate`, `call`
-- `src/webos_mcp/remote.py`, `logsafe.py`: shared, byte-identical, with mcp-server-shieldtv and
-  -onkyo (hardware-free revision); change them in all of them. webOS-only redaction is in
-  `redact.py`, layered on top
+- **Shared with the siblings; the source of truth is mcp-server-shared.** `src/webos_mcp/remote.py`,
+  `logsafe.py`, `tasks.py` (`stop_task`), `scripts/sync_shared.py`, and `tests/test_remote.py`,
+  `test_logsafe.py`, `test_tasks.py` (rendered with this package's name); mcp-server-shared's
+  `shared.toml` is the full list. Don't edit them here: change them in mcp-server-shared, then run
+  `python scripts/sync_shared.py --update` here and commit the files together with `shared.lock`.
+  `python scripts/sync_shared.py --check` (CI's `shared-drift` job) fails on any difference from the
+  locked commit; a weekly scheduled run also fails once mcp-server-shared `main` has moved past it.
+  webOS-only redaction is in `redact.py`, layered on top of `logsafe.py`
 - `src/webos_mcp/sim/`: `fake_tv.py` (the TV on the wire, with `Faults`), `profiles.py` (c7, g1,
   c5-webos25, c5-webos26, each behavior with its source), `fixtures/` (captures from real TVs)
 - `deploy/alpine/`: OpenRC service, install script, and the container smoke test CI runs
 - `docs/`: `skill-webos.md` (for the home-theater Skill), `OUT_OF_SCOPE.md`, `PLAN.md`
 - `tests/`: simulator fixtures in `conftest.py` (`tvs`, `register`, `fast`); `test_wire` (the
   library vs the simulator), `test_compat`, `test_client`, `test_tools`, `test_cli`,
-  `test_contract` (skips until there are captures), shared `test_remote`/`test_logsafe`. Async
+  `test_contract` (skips until there are captures), shared `test_remote`/`test_logsafe`/`test_tasks`. Async
   tests use anyio's plugin, not pytest-asyncio.
 
 ## Rules for changes
@@ -81,4 +85,6 @@ mcp-server-webos pair --host IP --name ROOM [--alias A] | check | discover | doc
 mcp-server-webos simulate --profile g1 --config-dir /tmp/sim [--paired]   # then WEBOS_CONFIG_DIR=/tmp/sim ...
 mcp-server-webos call <tool> key=value                                    # one tool through the MCP layer
 mcp-server-webos capture --tv ROOM --profile c5-webos25 --out captures/
+python scripts/sync_shared.py --check [--latest]                          # shared files vs mcp-server-shared
+python scripts/sync_shared.py --update                                    # take mcp-server-shared main
 ```
