@@ -474,9 +474,14 @@ class TvClient:
     def _app_title(self, app_id: str | None) -> str | None:
         if not app_id:
             return None
-        app = self.cache.apps.get(app_id) or self.cache.inputs.get(app_id)
+        # An input's label is the user's name for it ("Onkyo"); the TV may also list the input as a
+        # launch point, with a generic title ("HDMI 1"), so the input wins.
+        inp = self.cache.inputs.get(app_id)
+        if isinstance(inp, dict) and inp.get("label"):
+            return clean(inp["label"])
+        app = self.cache.apps.get(app_id)
         if isinstance(app, dict):
-            return clean(app.get("title") or app.get("label") or app_id)
+            return clean(app.get("title") or app_id)
         return None
 
     def _input_label(self) -> str | None:
