@@ -197,14 +197,16 @@ mcp-server-webos call select_source source=netflix tv=Office
 mcp-server-webos call select_source source=Onkyo tv=Office     # your label for the receiver's input
 ```
 
-- Compare the app ids in `list_sources` (and in your capture's listLaunchPoints) with the
-  defaults in `config.py` (W-APP-IDS). Add any you want to config.json's "apps".
+- `mcp-server-webos apps --all-tvs` lists every installed app by group. Compare with the defaults
+  in `config.py` (W-APP-IDS), check nothing of LG's lands in "Not allowed yet" and nothing you'd
+  want is wrongly "Excluded" (W-SYSTEM-APP-IDS), then `--add` what you want.
 - Inputs: id `HDMI_n`, your labels, and switching brings `com.webos.app.hdmiN` to the front
   (W-INPUT-IDS).
 
 | Check | Bedroom C7 | Family Room G1 | Office C5 |
 | --- | --- | --- | --- |
-| Default app ids that match (W-APP-IDS) | | | |
+| Default app ids that match (W-APP-IDS) | | | 2026-10-14: 5 of 7 (no plex, spotify) |
+| `apps` groups LG's apps as system or excluded (W-SYSTEM-APP-IDS) | | | |
 | Inputs listed with your labels (W-INPUT-IDS) | | | |
 | select_source confirms an app | | | |
 | select_source confirms an input | | | |

@@ -1,4 +1,4 @@
-"""Entry point: ``mcp-server-webos [serve] | pair | check | discover | doctor | capture | simulate | call``.
+"""Entry point: ``mcp-server-webos [serve] | pair | check | apps | discover | doctor | capture | simulate | call``.
 
 ``serve`` is the default, so ``mcp-server-webos`` alone runs the MCP server
 over stdio, and ``mcp-server-webos --http`` works as well as
@@ -158,6 +158,56 @@ async def _cmd_check(args: argparse.Namespace) -> int:
         for lim in s["limitations"]:
             print(f"  can't: {lim}")
     return status
+
+
+async def _cmd_apps(args: argparse.Namespace) -> int:
+    """List each TV's installed apps by group, and add chosen ones to the allow-list (see apps.py)."""
+    from . import apps
+
+    settings = load_settings()
+    if args.all_tvs:
+        chosen = list(settings.tvs)
+    elif args.tv:
+        chosen = [t for t in settings.tvs if t.answers_to(args.tv)]
+    else:
+        chosen = list(settings.tvs) if len(settings.tvs) == 1 else []
+        if len(settings.tvs) > 1:  # never guess which TV
+            names = ", ".join(t.name for t in settings.tvs)
+            print(f"Which TV? Pass --tv NAME or --all-tvs. Configured: {names}.", file=sys.stderr)
+            return 2
+    if not chosen:
+        print("No TVs configured (or none by that name). Run `mcp-server-webos pair`.", file=sys.stderr)
+        return 1
+    found: dict[str, list[dict[str, Any]]] = {}
+    status = 0
+    for tv in chosen:
+        try:
+            found[tv.name] = await apps.fetch(tv, args.timeout)
+        except apps.FETCH_ERRORS as exc:
+            print(f"{tv.name}: couldn't read its apps ({str(exc) or type(exc).__name__}). Is it on?", file=sys.stderr)
+            status = 1
+    if not found:
+        return 1
+    listing = apps.build_listing(settings, found)
+    if args.json:
+        print(apps.to_json(listing))
+    else:
+        print(apps.render(listing, several_tvs=len(chosen) > 1))
+    refs = [r.strip() for value in args.add for r in value.split(",") if r.strip()]
+    if not refs and not args.add_all:
+        return status
+    adding, problems = apps.select(listing, refs, args.add_all)
+    for problem in problems:
+        print(f"Not added: {problem}", file=sys.stderr)
+    if not adding:
+        print("\nNothing to add.")
+        return 1 if problems else status
+    apps.add_to_config(adding)
+    print("\nAdded to the allow-list in config.json:")
+    for a in adding:
+        print(f"  {a.name} = {a.id}")
+    print("Restart the server to use them (rc-service mcp-server-webos restart).")
+    return 1 if problems else status
 
 
 async def _cmd_discover(timeout: float) -> int:
@@ -330,6 +380,17 @@ def build_parser() -> argparse.ArgumentParser:
     p_pair.add_argument("--timeout", type=float, default=60.0, help="seconds to wait for the TV's OK (default 60)")
     p_check = sub.add_parser("check", parents=[common], help="connect once to each TV and show what works on it")
     p_check.add_argument("--tv", help="only this TV")
+    p_apps = sub.add_parser(
+        "apps", parents=[common], help="list a TV's installed apps, and add chosen ones to the allow-list"
+    )
+    p_apps.add_argument("--tv", help="which TV (required with several, unless --all-tvs)")
+    p_apps.add_argument("--all-tvs", action="store_true", help="every configured TV, merged into one list")
+    p_apps.add_argument(
+        "--add", action="append", default=[], metavar="NAME", help="add these (names, ids or titles; comma-separated)"
+    )
+    p_apps.add_argument("--add-all", action="store_true", help="add every third-party app not yet allowed")
+    p_apps.add_argument("--json", action="store_true", help="machine-readable listing")
+    p_apps.add_argument("--timeout", type=float, default=15.0, help="seconds per TV (default 15)")
     p_disc = sub.add_parser("discover", parents=[common], help="list webOS TVs that answer SSDP")
     p_disc.add_argument("--timeout", type=float, default=3.0)
     doc = sub.add_parser(
@@ -379,6 +440,7 @@ def main(argv: list[str] | None = None) -> None:
     commands = {
         "pair": lambda: _cmd_pair(args),
         "check": lambda: _cmd_check(args),
+        "apps": lambda: _cmd_apps(args),
         "discover": lambda: _cmd_discover(args.timeout),
         "doctor": lambda: _cmd_doctor(args),
         "capture": lambda: _cmd_capture(args),

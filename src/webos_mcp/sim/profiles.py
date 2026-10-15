@@ -38,6 +38,12 @@ APPS: list[dict[str, Any]] = [
     _app("com.apple.appletv", "Apple TV"),
     _app("com.webos.app.livetv", "Live TV"),
     _app("com.webos.app.browser", "Web Browser"),
+    # For the `apps` command: a third-party app nobody allow-listed yet, LG's store, an
+    # LG app that is neither excluded nor third-party, and an input launch point.
+    _app("crunchyroll", "Crunchyroll"),
+    _app("com.webos.app.discovery", "LG Content Store"),
+    _app("com.webos.app.photovideo", "Photo & Video"),
+    _app("com.webos.app.hdmi1", "HDMI 1"),
 ]
 
 # The TV usually sits on one HDMI input from the receiver. HDMI 3 is labeled
