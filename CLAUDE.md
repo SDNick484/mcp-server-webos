@@ -29,7 +29,9 @@ Targets: the owner's 2017 C7 (webOS 3.5, Bedroom), 2021 G1 (webOS 6.0, Family Ro
 - `src/webos_mcp/assumptions.py`: every protocol detail relied on (W-* ids). Cite ids in code
   (`ASSUMPTION W-...`); `tests/test_assumptions.py` keeps code, README and HARDWARE_VALIDATION.md
   in step with it
-- `src/webos_mcp/cli.py`: `serve` (default), `pair`, `check`, `discover`, `doctor` (`doctor.py`),
+- `src/webos_mcp/apps.py`: the `apps` command: each TV's installed apps by group (allowed, third-party,
+  LG's own, excluded) and adding chosen ones to config.json's allow-list. CLI only, never a tool
+- `src/webos_mcp/cli.py`: `serve` (default), `pair`, `check`, `apps` (`apps.py`), `discover`, `doctor` (`doctor.py`),
   `capture` (`capture.py`), `simulate`, `call`
 - **Shared with the siblings; the source of truth is mcp-server-shared.** `src/webos_mcp/remote.py`,
   `logsafe.py`, `tasks.py` (`stop_task`), `scripts/sync_shared.py`, and `tests/test_remote.py`,
@@ -51,7 +53,9 @@ Targets: the owner's 2017 C7 (webOS 3.5, Bedroom), 2021 G1 (webOS 6.0, Family Ro
 ## Rules for changes
 
 - **No escape hatches.** No raw SSAP/luna passthrough, no URL or free-text tools; keys and apps
-  are allow-lists. Widen them deliberately, with README and tests in the same commit.
+  are allow-lists. Widen them deliberately, with README and tests in the same commit. Users grow
+  the app allow-list with `apps`; never give the model a tool for it, and keep `apps.EXCLUDED` out
+  of `--add`.
 - **Never guess a device or a source.** With several TVs, an action without `tv` is refused; a
   key is only ever sent after the hello shows the paired deviceUUID; rediscovery adopts an address
   only on a deviceUUID match; a source name matching an app and an input is refused.
@@ -83,6 +87,7 @@ anything written here.
 pip install -e ".[dev]" && pytest && ruff check . && ruff format --check . && mypy
 mcp-server-webos pair --host IP --name ROOM [--alias A] | check | discover | doctor | (serve [--http] [--dry-run])
 mcp-server-webos simulate --profile g1 --config-dir /tmp/sim [--paired]   # then WEBOS_CONFIG_DIR=/tmp/sim ...
+mcp-server-webos apps --tv ROOM | --all-tvs [--add NAME,... | --add-all] [--json]   # the app allow-list
 mcp-server-webos call <tool> key=value                                    # one tool through the MCP layer
 mcp-server-webos capture --tv ROOM --profile c5-webos25 --out captures/
 python scripts/sync_shared.py --check [--latest]                          # shared files vs mcp-server-shared

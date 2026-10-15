@@ -83,6 +83,30 @@ mcp-server-webos doctor       # layer by layer, read-only; each failure names a 
 mcp-server-webos discover     # which webOS TVs answer SSDP (TVs that are off don't)
 ```
 
+### Choose the apps
+
+`select_source` only opens apps on the allow-list: a few defaults, plus yours. To see what a TV
+actually has installed, and add from it:
+
+```sh
+mcp-server-webos apps --tv "Office TV"                 # listed by group, with the name select_source will use
+mcp-server-webos apps --tv "Office TV" --add crunchyroll,"Photo & Video"
+mcp-server-webos apps --all-tvs --add-all             # every third-party app on any TV
+```
+
+| Group | Means | Added by |
+| --- | --- | --- |
+| Allowed | already on the allow-list | |
+| Not allowed yet | third-party apps | `--add NAME` or `--add-all` |
+| LG's own apps | `com.webos.`, `com.palm.`, `com.lge.` ids (W-SYSTEM-APP-IDS) | `--add NAME` only |
+| Excluded | the web browser (it opens any URL), settings, LG's store (it installs apps), inputs (`select_source` handles them), Live TV, service menus | never |
+
+It asks the TV over a short session with the stored key and changes nothing on it. New entries go
+into `config.json`'s `"apps"`; restart the server to use them. Run it as the service user on the
+LXC (`su -s /bin/sh mcp-webos -c '…'` with `WEBOS_CONFIG_DIR=/var/lib/mcp-server-webos`), since
+`keys.json` and `config.json` are that user's. There is no tool for this: the model can't widen the
+allow-list.
+
 ### config.json
 
 `pair` writes it; you may edit names, aliases, `max_volume` and `volume_owner`:
@@ -349,6 +373,7 @@ says which step confirms each.
 | `W-SOUND-OUTPUT` | medium | simulator-only |
 | `W-VOLUME-ARC` | medium | simulator-only |
 | `W-APP-IDS` | low | simulator-only |
+| `W-SYSTEM-APP-IDS` | medium | simulator-only |
 | `W-INPUT-IDS` | medium | simulator-only |
 | `W-SSDP` | medium | simulator-only |
 

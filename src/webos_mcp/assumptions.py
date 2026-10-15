@@ -289,7 +289,19 @@ ASSUMPTIONS: tuple[Assumption, ...] = (
         "reports on each TV.",
         "lgtv-mcp's fakes and community lists; to be replaced by ids captured from the TVs",
         "low",
-        note="A wrong id is harmless: only allow-listed ids the TV itself lists are offered.",
+        note="A wrong id is harmless: only allow-listed ids the TV itself lists are offered. 2026-10-14, Office "
+        "C5 (webOS 25): apple-tv, disney+, netflix, prime-video and youtube matched; plex and spotify weren't "
+        "listed (not installed, or other ids). `mcp-server-webos apps` shows each TV's real ids.",
+    ),
+    Assumption(
+        "W-SYSTEM-APP-IDS",
+        "LG's own apps use ids starting com.webos., com.palm. or com.lge.; the browser is com.webos.app.browser, "
+        "LG's store com.webos.app.discovery, inputs com.webos.app.hdmiN, Live TV com.webos.app.livetv; settings "
+        "and service apps have settings/factory in their ids.",
+        "aiowebostv (com.webos.app.livetv, com.webos.app.hdmiN); lgtv-mcp's fakes; community app-id lists",
+        "medium",
+        note="`apps --add-all` only adds apps outside those namespaces and never an excluded one. An LG app with "
+        "another id would be offered as third-party: read the listing before --add-all.",
     ),
     Assumption(
         "W-INPUT-IDS",
