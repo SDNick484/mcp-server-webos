@@ -34,7 +34,7 @@ you saw in `assumptions.py` (see "Recording results" at the end).
 | Rediscovery by deviceUUID after an address change | verified against simulator only | 11 |
 | A refused pointer socket costs only the keys (compat.py) | verified against simulator only | 4 |
 | `capture` and the contract tests | verified against simulator only | 1 |
-| Streamable HTTP + Cloudflare Access; OpenRC service on Alpine | verified against simulator only | 13 |
+| Streamable HTTP + Cloudflare Access; OpenRC service on Alpine | verified on hardware (2026-10-14, CT 210, Office TV; mobile app not yet) | 13 |
 | Log redaction (addresses, MACs, serials, UUIDs; keys always) | verified against simulator only | 4 |
 
 ## Before you start
@@ -275,7 +275,7 @@ should drop (W-MULTI-CLIENT).
 
 ## 13. HTTP and the Alpine service
 
-In the Alpine LXC, as in the siblings' READMEs:
+In the Alpine LXC:
 
 ```sh
 sh deploy/alpine/install.sh
@@ -284,15 +284,27 @@ vi /etc/mcp-server-webos/env      # HTTP and Access settings (port 8715, path /w
 rc-update add mcp-server-webos default && rc-service mcp-server-webos start
 ```
 
-Then add the cloudflared ingress rule for `/webos/mcp` on mcp.nickandrade.com, the connector in
-Claude, and call `get_status` from the phone.
+Then set up Cloudflare as in the README's "Setting up Cloudflare": the Access application for all
+of `mcp.nickandrade.com` with Managed OAuth, and a route for `^/webos/` on the "Dinner Log, Steam,
+& Wishlist" tunnel. That tunnel's cloudflared runs as a Docker container in CT 210, so the route
+is `http://192.168.1.174:8715` and `MCP_HTTP_BIND=192.168.1.174`; `MCP_PUBLIC_HOSTS` must be set.
 
 | Check | Result |
 | --- | --- |
-| Service starts, `/healthz` answers | |
+| Service starts, `/healthz` answers | 2026-10-14: yes (CT 210, bound to 192.168.1.174) |
+| Through Access from Claude Code | 2026-10-14: yes, after the two fixes below |
+| Through Access from the Claude app connector | 2026-10-14: yes (`list_tvs`, `list_sources` on Office TV) |
+| Through Access from the mobile app | |
 | doctor as the service user passes for all three TVs | |
 | Wake-on-LAN from the LXC (step 6) | |
-| Tools work through Cloudflare Access from the mobile app | |
+
+What it took on 2026-10-14, in the order it showed up (the README's "When it doesn't connect"
+table has all of them):
+
+1. A route to `http://localhost:8715` gave HTTP 502: cloudflared is a container, so `localhost`
+   was the container. Fixed by routing to, and binding on, the LXC's address.
+2. Then HTTP 421, `Invalid Host header: mcp.nickandrade.com`: `MCP_PUBLIC_HOSTS` was missing from
+   the env file.
 
 ## Recording results
 

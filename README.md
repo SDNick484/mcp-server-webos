@@ -189,19 +189,15 @@ dependency is pinned `<0.11`.
 ## HTTP and Cloudflare Access
 
 To share one server between Claude Code, Claude Desktop and the mobile app, run it as a service
-and reach it through a Cloudflare Tunnel with Access in front, exactly as the siblings do:
-
-```sh
-CF_ACCESS_TEAM_DOMAIN=<team>.cloudflareaccess.com CF_ACCESS_AUD=<aud tag> \
-  mcp-server-webos --http --public-host mcp.example.com      # 127.0.0.1:8715/webos/mcp
-```
+and reach it through a Cloudflare Tunnel with Access in front, exactly as the siblings do. Claude's
+connectors reach it from the internet, so the URL is public; Access is what keeps it yours.
 
 | Flag | Variable | Default |
 |---|---|---|
 | `--bind` | `MCP_HTTP_BIND` | `127.0.0.1` |
 | `--port` | `MCP_HTTP_PORT` | `8715` (Onkyo 8711, Shield 8712, Harmony 8713, Sofabaton 8714) |
 | `--path` | `MCP_HTTP_PATH` | `/webos/mcp` |
-| `--public-host` | `MCP_PUBLIC_HOSTS` | none: only loopback Host headers pass |
+| `--public-host` | `MCP_PUBLIC_HOSTS` | none: only loopback Host headers pass, so **Cloudflare's requests get 421** |
 | | `CF_ACCESS_TEAM_DOMAIN`, `CF_ACCESS_AUD` | none: no Access checks |
 | | `MCP_ALLOWED_EMAILS` | anyone Access lets in |
 
@@ -210,6 +206,60 @@ gets a plain 403. The server refuses to start on a non-loopback address without 
 you pass `--insecure-no-auth`. `GET /healthz` answers without auth. `remote.py` and `logsafe.py`
 are shared with the sibling servers, from
 [mcp-server-shared](https://github.com/SDNick484/mcp-server-shared).
+
+### Setting up Cloudflare
+
+This is the setup that works, verified with Claude Code and the Claude app connector on
+2026-10-14. Do the Access application first, so the URL is never public.
+
+1. **One Access application for the whole hostname**, shared by every MCP server on it. Zero Trust
+   → Access controls → Applications → Add → Self-hosted:
+   - Destination: subdomain `mcp`, your domain, **path empty**. Managed OAuth serves its sign-in
+     discovery from the root of the hostname (`/.well-known/...`), so an app limited to
+     `/webos` may not cover it; one app also means one sign-in for all the servers.
+   - Policy: Allow → Emails → you. Login method: One-time PIN (or your identity provider).
+   - Edit the app → **Advanced settings → Managed OAuth: on**. Allowed redirect URIs:
+     `https://claude.ai/*`. Turn on **Allow localhost clients** (Claude Code signs in through
+     localhost). Access token 15 min, grant session 1-2 weeks.
+   - Copy the app's **Application Audience (AUD) tag**.
+   - Make sure no *other* Access app covers a path on the same hostname: Access applies the most
+     specific match, and a Bypass policy there would let requests through without a token.
+2. **A route on the tunnel.** Networks → Tunnels → the tunnel → Published application routes →
+   Add: hostname `mcp.example.com`, path `^/webos/` (a regex), service
+   `http://<address>:8715`. Leave the HTTP Host Header override unset: the server checks the
+   public Host.
+   - The service address is resolved **where cloudflared runs**. If cloudflared is a Docker
+     container (the tunnel page lists the replica's hostname as a 12-character hex container ID), `localhost`
+     is that container, not the LXC: use the LXC's LAN address or the Docker bridge's
+     (`172.17.0.1`, reachable only from containers on that host), and set `MCP_HTTP_BIND` to the same address.
+3. **`/etc/mcp-server-webos/env`** (see `deploy/alpine/env.example`), then
+   `rc-service mcp-server-webos restart`:
+   ```sh
+   MCP_HTTP_BIND=192.168.1.10          # e.g. the LXC's address: the one the route points at
+   MCP_PUBLIC_HOSTS=mcp.example.com # required: without it every request through Cloudflare gets 421
+   CF_ACCESS_TEAM_DOMAIN=<team>.cloudflareaccess.com
+   CF_ACCESS_AUD=<the AUD tag from step 1>
+   MCP_ALLOWED_EMAILS=<the email you sign in to Access with>
+   ```
+4. **Test**, then add `https://mcp.example.com/webos/mcp` as a custom connector in Claude (and
+   `claude mcp add --transport http webos <url>` for Claude Code):
+   ```sh
+   curl -s http://192.168.1.10:8715/healthz                               # {"status": "ok"}
+   curl -si -X POST https://mcp.example.com/webos/mcp -d '{}' | head -5 # 401 + www-authenticate
+   ```
+
+### When it doesn't connect
+
+Watch the server while you press Connect: `tail -n 0 -f /var/log/mcp-server-webos/server.log`.
+
+| You see | Cause | Fix |
+| --- | --- | --- |
+| The outside `curl` gets a 302 to `…cloudflareaccess.com` | Managed OAuth is off: Claude gets a login page | Turn it on (step 1) |
+| Claude: "couldn't reach" / "authorized, but … returned an error"; Claude Code: `HTTP 502`; nothing in the log | The tunnel can't reach the server: the route's service address isn't where the server listens (usually `localhost` with cloudflared in a container) | Step 2's address and `MCP_HTTP_BIND` must match |
+| Claude Code: `HTTP 421`; log: `Invalid Host header: mcp.example.com` | `MCP_PUBLIC_HOSTS` isn't set | Step 3 |
+| Log: `Denied … no Cloudflare Access assertion` | The request didn't come through Access: a local test with `curl`, or another Access app/Bypass policy on the path | Ignore it for local tests; otherwise see step 1's last point |
+| Log: `Denied … Audience doesn't match` / `Invalid issuer` | `CF_ACCESS_AUD` is another app's tag, or the team domain is wrong | Copy both again from the app in step 1 |
+| Log: `Denied … not in MCP_ALLOWED_EMAILS` | You signed in to Access with another address | Make them match |
 
 ### As a service on Alpine (Proxmox LXC)
 
