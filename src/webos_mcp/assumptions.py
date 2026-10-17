@@ -112,10 +112,16 @@ ASSUMPTIONS: tuple[Assumption, ...] = (
     ),
     Assumption(
         "W-SWINFO-401",
-        "com.webos.service.update/getCurrentSWInformation answers 401 to an unsigned-manifest key on webOS 26; "
-        "aiowebostv >=0.9.2 ignores that, and this server never needs it.",
-        "HA core issue #172703 (G5, 11.2.0); aiowebostv 0.9.2's suppress() around get_software_info",
+        "com.webos.service.update/getCurrentSWInformation answers 401 to an unsigned-manifest key (not only on "
+        "webOS 26: the C5 does it on webOS 25 too); aiowebostv >=0.9.2 ignores that, and this server never needs it.",
+        "HA core issue #172703 (G5, 11.2.0); aiowebostv 0.9.2's suppress() around get_software_info; the Office C5's "
+        "capture",
         "high",
+        status="hardware-verified",
+        note="2026-10-16, Office C5 on webOS 25 (10.3.1): '401 insufficient permissions', and get_status worked "
+        "regardless. This used to say webOS 26 only; the contract test caught it. Probably the unsigned "
+        "manifest never had this permission, so the C7 and G1 may refuse it too: their profiles still "
+        "answer it until they are captured.",
     ),
     Assumption(
         "W-UUID-STABLE",

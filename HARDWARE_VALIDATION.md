@@ -128,7 +128,7 @@ mcp-server-webos doctor --no-redact # addresses shown (keys never are)
 | hello: platform, pairing types | | | |
 | hello: TLS fingerprint; same after a TV reboot? (W-TLS-CERT) | n/a | | |
 | session: buttons allowed (W-INPUT-SOCKET) | | | |
-| session: refused calls (W-SWINFO-401 on webOS 26) | | | |
+| session: refused calls (W-SWINFO-401; the C5 refuses it on webOS 25 too) | | | 401, 2026-10-16 |
 | session: connected at all, i.e. no subscription refused (W-SUBSCRIBE) | | | |
 | deviceUUID unchanged after a TV reboot (W-UUID-STABLE) | | | |
 | Log lines redacted (no serial, UUID or key in `--debug` output) | | | |

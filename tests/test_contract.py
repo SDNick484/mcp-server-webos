@@ -40,9 +40,22 @@ async def test_simulator_matches_capture(tvs, fixture):
         ours = await exchanges(client, tuple(e["uri"] for e in captured["exchanges"]))
     finally:
         await client.disconnect()
+    # Every difference at once, not just the first: each capture is a trip to a real TV, so one run
+    # should say everything the simulator gets wrong about it.
+    problems: list[str] = []
     for real, fake in zip(captured["exchanges"], ours, strict=True):
-        assert real["type"] == fake["type"], (real["uri"], real, fake)
-        if real["type"] == "response":
-            for key, value in fake["payload"].items():
-                assert key in real["payload"], (real["uri"], key)
-                assert kind(real["payload"][key]) == kind(value), (real["uri"], key)
+        uri = real["uri"]
+        if real["type"] != fake["type"]:
+            said = real.get("error") or "a response"
+            problems.append(f"{uri}: the TV gave {real['type']} ({said}), the simulator gave {fake['type']}")
+            continue
+        if real["type"] != "response":
+            continue
+        for key, value in fake["payload"].items():
+            if key not in real["payload"]:
+                problems.append(f"{uri}: the simulator sends {key!r}, the TV doesn't")
+            elif kind(real["payload"][key]) != kind(value):
+                problems.append(
+                    f"{uri}: {key!r} is {kind(real['payload'][key])} on the TV, {kind(value)} in the simulator"
+                )
+    assert not problems, f"{fixture.name}: {len(problems)} difference(s)\n  " + "\n  ".join(problems)

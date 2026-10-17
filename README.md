@@ -349,7 +349,7 @@ says which step confirms each.
 | `W-PROMPT-DISMISS` | low | simulator-only |
 | `W-PAIR-WINDOW` | low | simulator-only |
 | `W-HELLO-VERSION` | high | simulator-only |
-| `W-SWINFO-401` | high | simulator-only |
+| `W-SWINFO-401` | high | hardware-verified |
 | `W-UUID-STABLE` | medium | simulator-only |
 | `W-PORTS` | medium | simulator-only |
 | `W-PORT3000-CLOSE` | medium | simulator-only |
