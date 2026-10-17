@@ -78,7 +78,9 @@ ASSUMPTIONS: tuple[Assumption, ...] = (
         "A registration carrying a client key the TV knows is answered with type 'registered' at once, with no dialog.",
         "aiowebostv's _check_registration only waits for a second message after a PROMPT response",
         "high",
-        note="compat.py also accepts a PROMPT followed promptly by 'registered', in case a TV does that.",
+        status="hardware-verified",
+        note="2026-10-16: the G1's doctor run says 'registered without a dialog', and the C5's service reconnects "
+        "without one. compat.py also accepts a PROMPT followed promptly by 'registered', in case a TV does that.",
     ),
     Assumption(
         "W-STALE-KEY",
@@ -104,24 +106,28 @@ ASSUMPTIONS: tuple[Assumption, ...] = (
     ),
     Assumption(
         "W-HELLO-VERSION",
-        "The unauthenticated hello reply carries deviceOSReleaseVersion (10.x on webOS 25, 11.x on webOS 26), "
+        "The unauthenticated hello reply carries deviceOSReleaseVersion (6.x on webOS 6, 10.x on webOS 25, 11.x on "
+        "webOS 26), "
         "deviceUUID and pairingTypes, so the platform is known without a key.",
         "HA core issue #172703 debug log (a G5 on webOS 26: 11.2.0); a C5 owner there reports 10.3.1 on webOS 25",
         "high",
-        note="High for the C5; what the C7 (webOS 3.5) and G1 (webOS 6) put in these fields is unknown.",
+        status="hardware-verified",
+        note="2026-10-16: the C5 says 10.3.1 and the G1 6.5.3, each with its deviceUUID and pairing types (G1: PIN, "
+        "PROMPT, COMBINED). The C7 (webOS 3.5) is not checked yet.",
     ),
     Assumption(
         "W-SWINFO-401",
         "com.webos.service.update/getCurrentSWInformation answers 401 to an unsigned-manifest key (not only on "
-        "webOS 26: the C5 does it on webOS 25 too); aiowebostv >=0.9.2 ignores that, and this server never needs it.",
+        "webOS 26: the C5 on webOS 25 and the G1 on webOS 6 do too); aiowebostv >=0.9.2 ignores that, and this "
+        "server never needs it.",
         "HA core issue #172703 (G5, 11.2.0); aiowebostv 0.9.2's suppress() around get_software_info; the Office C5's "
-        "capture",
+        "and Family Room G1's captures",
         "high",
         status="hardware-verified",
         note="2026-10-16, Office C5 on webOS 25 (10.3.1): '401 insufficient permissions', and get_status worked "
-        "regardless. This used to say webOS 26 only; the contract test caught it. Probably the unsigned "
-        "manifest never had this permission, so the C7 and G1 may refuse it too: their profiles still "
-        "answer it until they are captured.",
+        "regardless; the Family Room G1 on webOS 6.5.3 the same. This used to say webOS 26 only; the contract "
+        "test caught it. Probably the unsigned manifest never had this permission, so the C7 may refuse it too: "
+        "its profile still answers until it is captured.",
     ),
     Assumption(
         "W-UUID-STABLE",
@@ -134,10 +140,15 @@ ASSUMPTIONS: tuple[Assumption, ...] = (
     # --- transport ----------------------------------------------------------------------
     Assumption(
         "W-PORTS",
-        "The C7 answers plain WebSocket on port 3000 only; the G1 and C5 answer TLS WebSocket on 3001 only.",
+        "The C7 answers plain WebSocket on port 3000 only; the G1 answers both plain WebSocket on 3000 and TLS "
+        "on 3001, and aiowebostv uses 3000 when it is open; the C5 answers TLS on 3001 only.",
         "LGWebOSRemote README (TLS required from January 2023 firmware; a C1 listed as ssl); an RTI driver's "
-        "notes (3000 only for 2014-2017 sets)",
+        "notes (3000 only for 2014-2017 sets); the Family Room G1's doctor run",
         "medium",
+        note="2026-10-16, Family Room G1 (webOS 6.5.3): 3000 and 3001 both open, and the session registered on "
+        "3000. This used to say 3001 only for the G1. So on the G1 the client key crosses the LAN unencrypted, as "
+        "it does for Home Assistant. The C5's capture has its session on 3001, as claimed; whether its 3000 "
+        "refuses or accepts-then-closes isn't known yet (W-PORT3000-CLOSE). The C7 is not checked yet.",
     ),
     Assumption(
         "W-PORT3000-CLOSE",
@@ -169,7 +180,9 @@ ASSUMPTIONS: tuple[Assumption, ...] = (
         "HA core issue #172703 (a G5 on webOS 26 and a C2 pressing buttons); LGTVCompanion issue #351 (401 on "
         "43.x firmware until permissions moved to the outer list, which is what aiowebostv 0.9.2 sends)",
         "medium",
-        note="If one refuses it, compat.py keeps the connection without buttons instead of failing it all.",
+        note="2026-10-16: granted on the G1 (doctor: 'buttons allowed') and the C5 (its capture). If one refuses "
+        "it, compat.py keeps the "
+        "connection without buttons instead of failing it all.",
     ),
     Assumption(
         "W-SUBSCRIBE",
@@ -177,7 +190,8 @@ ASSUMPTIONS: tuple[Assumption, ...] = (
         "(e.g. 401) fails the whole connection.",
         "aiowebostv 0.10.0 _get_states_and_subscribe_state_updates (only WebOsTvServiceNotFoundError is suppressed)",
         "high",
-        note="The library half is certain; that the TVs only ever answer 404 is not.",
+        note="The library half is certain; that the TVs only ever answer 404 is not. 2026-10-16: the G1 answers "
+        "404 to one of them (com.webos.media/getForegroundAppInfo) and connects anyway.",
     ),
     # --- power --------------------------------------------------------------------------
     Assumption(
@@ -271,9 +285,14 @@ ASSUMPTIONS: tuple[Assumption, ...] = (
     ),
     Assumption(
         "W-NOW-PLAYING",
-        "com.webos.media/getForegroundAppInfo gives the app and a playState (e.g. playing, paused), and no title.",
-        "aiowebostv's media_state; lgtv-mcp",
+        "com.webos.media/getForegroundAppInfo gives the app and a playState (e.g. playing, paused), and no title, "
+        "on webOS 25; webOS 6 doesn't have it (404), so now_playing is always null on the G1.",
+        "aiowebostv's media_state; lgtv-mcp; the Office C5's and Family Room G1's captures",
         "medium",
+        status="hardware-verified",
+        note="2026-10-16: the C5 (webOS 25) answers it in the simulator's shape; the G1 (webOS 6.5.3) answers "
+        "'404 no such service or method', and aiowebostv's subscription to it fails quietly (W-SUBSCRIBE). The "
+        "C7 is not checked yet; its profile still answers.",
     ),
     Assumption(
         "W-SOUND-OUTPUT",
@@ -322,7 +341,9 @@ ASSUMPTIONS: tuple[Assumption, ...] = (
         "its own address.",
         "lgtv-mcp discovery; Home Assistant's webostv SSDP matcher",
         "medium",
-        note="A TV that is off doesn't answer, so rediscovery only finds a TV once it is on.",
+        status="hardware-verified",
+        note="2026-10-16: the G1 and C5 both answered doctor's search, each on its own address. A TV that is off "
+        "doesn't answer, so rediscovery only finds a TV once it is on.",
     ),
 )
 

@@ -176,8 +176,8 @@ async def test_platform_change_is_saved(home, tvs, running):
 
 
 async def test_certificate_change_warns_but_connects(home, tvs, running):
-    # ASSUMPTION W-TLS-CERT
-    tv = await tvs("g1")
+    # ASSUMPTION W-TLS-CERT (on the C5: TLS only, where the G1's session uses plain ws on 3000)
+    tv = await tvs("c5-webos25")
     c = await connected(await running(register(tv, cert_sha256="00" * 32)))
     assert "TLS certificate differs" in c.snapshot()["warnings"][0]
 
@@ -196,8 +196,8 @@ async def test_refresh_is_one_bounded_attempt(home, tvs, running):
 
 
 async def test_sources_and_select(home, tvs, running):
-    # ASSUMPTION W-APP-IDS, W-INPUT-IDS
-    tv = await tvs("g1")
+    # ASSUMPTION W-APP-IDS, W-INPUT-IDS (on the C5, which reports now_playing; the G1 doesn't)
+    tv = await tvs("c5-webos25")
     c = await connected(await running(register(tv)))
     sources = c.sources()
     apps = {s["name"] for s in sources if s["kind"] == "app"}
@@ -218,7 +218,7 @@ async def test_sources_and_select(home, tvs, running):
 
 async def test_keys_and_media(home, tvs, running):
     # ASSUMPTION W-KEYS, W-MEDIA-CONTROLS
-    tv = await tvs("g1")
+    tv = await tvs("c5-webos25")
     c = await connected(await running(register(tv)))
     r = await c.send_key("DOWN", 3)
     assert r.sent == ["button DOWN"] * 3
@@ -227,6 +227,17 @@ async def test_keys_and_media(home, tvs, running):
     await c.media_control("pause")
     assert "media.controls/pause" in tv.requests
     await wait_until(lambda: c.snapshot()["now_playing"]["play_state"] == "paused")
+
+
+async def test_no_now_playing_on_webos6(home, tvs, running):
+    # ASSUMPTION W-NOW-PLAYING, W-SUBSCRIBE: the G1 answers 404 to the media subscription and still
+    # connects; media controls still work, only the play state is never known
+    tv = await tvs("g1")
+    c = await connected(await running(register(tv)))
+    await c.select_source("netflix")
+    await c.media_control("pause")
+    assert "media.controls/pause" in tv.requests and tv.foreground == "netflix"
+    assert c.snapshot()["now_playing"] is None and c.reachable
 
 
 async def test_volume_belongs_to_the_receiver_on_external_outputs(home, tvs, running):

@@ -76,6 +76,7 @@ class Profile:
     pairing_types: tuple[str, ...]
     sound_output: str  # ASSUMPTION W-SOUND-OUTPUT
     volume_flat: bool  # audio/getVolume without the volumeStatus wrapper (older webOS)
+    media_info: bool  # com.webos.media/getForegroundAppInfo exists; False: 404 (ASSUMPTION W-NOW-PLAYING)
     apps: list[dict[str, Any]] = field(default_factory=lambda: [dict(a) for a in APPS])
     inputs: list[dict[str, Any]] = field(default_factory=lambda: [dict(i) for i in INPUTS])
 
@@ -103,27 +104,29 @@ PROFILES: dict[str, Profile] = {
         pairing_types=("PROMPT", "PIN"),
         sound_output="tv_speaker",
         volume_flat=True,
+        media_info=True,  # GUESSED: not captured yet (the G1 lacks it, so the C7 may too)
     ),
     "g1": Profile(
         key="g1",
         model="OLED77G1PUA",
         os_version="4.1.0",  # GUESSED
-        release_version="6.3.1",  # GUESSED
+        release_version="6.5.3",  # the Family Room G1's hello, 2026-10-16
         uuid="61616161-0000-4000-8000-000000000021",
         serial="107ABCD00021",
         wired_mac="a8:23:fe:00:21:01",
         wifi_mac="a8:23:fe:00:21:02",
         wired=False,
-        port3000="refuse",
+        port3000="ws",  # 3000 and 3001 both open, session on 3000: the G1's doctor run, 2026-10-16 (W-PORTS)
         wss=True,
         power_state=True,
         screen_off_uri=TVPOWER,
         standby_socket=True,
         blacklist_signature=False,
-        software_info={"product_name": "webOSTV 6.0", "major_ver": "03", "minor_ver": "53.45"},
+        software_info=None,  # 401 on webOS 6 too: the G1's capture, 2026-10-16 (W-SWINFO-401)
         pairing_types=("PROMPT", "PIN", "COMBINED"),
         sound_output="external_arc",
         volume_flat=False,
+        media_info=False,  # 404 on webOS 6: the G1's capture, 2026-10-16 (W-NOW-PLAYING)
     ),
     "c5-webos25": Profile(
         key="c5-webos25",
@@ -145,6 +148,7 @@ PROFILES: dict[str, Profile] = {
         pairing_types=("PROMPT", "PIN", "COMBINED"),
         sound_output="external_arc",
         volume_flat=False,
+        media_info=True,  # the Office C5's capture, 2026-10-16
     ),
     "c5-webos26": Profile(
         key="c5-webos26",
@@ -166,6 +170,7 @@ PROFILES: dict[str, Profile] = {
         pairing_types=("PIN", "PROMPT", "COMBINED", "LGSWITCH-PIN"),  # G5 hello, HA core #172703
         sound_output="external_arc",
         volume_flat=False,
+        media_info=True,  # as on webOS 25 (GUESSED)
     ),
 }
 

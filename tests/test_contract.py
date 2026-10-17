@@ -6,7 +6,8 @@ file becomes a test here. For every request, the simulator profile must give
 the same kind of answer (a response or an error), and every field the
 simulator puts in a response must be in the TV's too, with the same JSON
 type: the simulator may know less than the TV, but it may not claim what the
-TV doesn't do. Until there are captures, this skips, saying so.
+TV doesn't do. The session must also end up on the same port (3000 or 3001).
+Until there are captures, this skips, saying so.
 """
 
 from __future__ import annotations
@@ -38,11 +39,15 @@ async def test_simulator_matches_capture(tvs, fixture):
     await client.connect()
     try:
         ours = await exchanges(client, tuple(e["uri"] for e in captured["exchanges"]))
+        port = client.port()
     finally:
         await client.disconnect()
     # Every difference at once, not just the first: each capture is a trip to a real TV, so one run
     # should say everything the simulator gets wrong about it.
     problems: list[str] = []
+    # Which port aiowebostv settles on says which ports the TV answers (ASSUMPTION W-PORTS)
+    if captured.get("port") is not None and captured["port"] != port:
+        problems.append(f"port: the TV's session was on {captured['port']}, the simulator's on {port}")
     for real, fake in zip(captured["exchanges"], ours, strict=True):
         uri = real["uri"]
         if real["type"] != fake["type"]:

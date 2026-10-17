@@ -454,6 +454,8 @@ class FakeTv:
         if uri == "com.webos.service.apiadapter/audio/getSoundOutput":
             return {"soundOutput": self.sound_output}
         if uri == "com.webos.media/getForegroundAppInfo":
+            if not p.media_info:
+                raise SsapError(NOT_FOUND)  # ASSUMPTION W-NOW-PLAYING: webOS 6 has no such service
             return {"foregroundAppInfo": self.media}
         if uri == "system.launcher/launch":
             app_id = payload.get("id")

@@ -61,9 +61,11 @@ def test_ssdp_replies_we_dont_trust(reply, sender):
 
 async def test_hello_needs_no_key(tvs):
     # ASSUMPTION W-HELLO-VERSION: the platform and identity come before pairing
-    g1, c7 = await tvs("g1"), await tvs("c7")
-    h = await probe.any_hello(g1.host)
-    assert (h.port, h.uuid, h.platform) == (3001, g1.profile.uuid, "6.3.1") and len(h.cert_sha256) == 64
+    g1, c5, c7 = await tvs("g1"), await tvs("c5-webos25"), await tvs("c7")
+    h = await probe.any_hello(c5.host)  # TLS only
+    assert (h.port, h.uuid, h.platform) == (3001, c5.profile.uuid, "10.3.1") and len(h.cert_sha256) == 64
+    h = await probe.any_hello(g1.host)  # both open: plain ws first, as aiowebostv does (W-PORTS)
+    assert (h.port, h.uuid, h.platform, h.cert_sha256) == (3000, g1.profile.uuid, "6.5.3", None)
     h = await probe.any_hello(c7.host)
     assert (h.port, h.cert_sha256) == (3000, None)
     assert g1.events("register") == [] and g1.events("prompt") == []

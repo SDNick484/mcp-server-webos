@@ -31,15 +31,24 @@ async def test_pair(home, tvs, capsys):
     assert (saved.name, saved.uuid, saved.platform, saved.model) == (
         "Family Room",
         tv.profile.uuid,
-        "6.3.1",
+        "6.5.3",
         "OLED77G1PUA",
     )
     assert saved.macs == (tv.profile.wifi_mac, tv.profile.wired_mac)  # the G1 is on Wi-Fi
-    assert set(saved.aliases) == {"G1", "OLED77G1PUA"} and saved.cert_sha256
+    # The G1 talks plain ws on 3000 (W-PORTS), so there is no TLS certificate to remember
+    assert set(saved.aliases) == {"G1", "OLED77G1PUA"} and saved.cert_sha256 is None
     assert keystore.get(tv.profile.uuid) in tv.keys
     assert stat.S_IMODE(keystore.path().stat().st_mode) == 0o600
     out = capsys.readouterr().out
     assert "Accept the pairing request on the TV" in out and keystore.get(tv.profile.uuid) not in out
+
+
+async def test_pair_saves_the_tls_fingerprint(home, tvs):
+    # ASSUMPTION W-TLS-CERT: on a TLS-only TV (the C5) pair remembers the certificate, so a change warns
+    tv = await tvs("c5-webos25", accept_after=0.2)
+    assert await cli._cmd_pair(pair_args(tv.host, name="Office")) == 0
+    (saved,) = load_settings().tvs
+    assert saved.cert_sha256 and len(saved.cert_sha256) == 64
 
 
 async def test_pair_again_updates_the_same_tv(home, tvs):
