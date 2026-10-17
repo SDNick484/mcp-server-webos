@@ -271,7 +271,10 @@ ASSUMPTIONS: tuple[Assumption, ...] = (
         "undone without unplugging the TV.",
         "aiowebostv and bscpylgtv endpoints; bscpylgtv's turn_screen_off docstring for 'passive'",
         "medium",
-        note="Likely absent on the C7 (webOS 3.5): set_screen then says so. 'passive' is never sent.",
+        note="2026-10-17, Bedroom C7 (webOS 3.9.3): the first endpoint blanked the picture with the sound on, "
+        "getPowerState read 'Screen Off', and turnOnScreen brought it back. It was expected to be absent there. "
+        "The G1 and C5 are not tried yet. A TV with neither endpoint gets a clear refusal (tests: "
+        "conftest.no_screen_off). 'passive' is never sent.",
     ),
     # --- control ------------------------------------------------------------------------
     Assumption(

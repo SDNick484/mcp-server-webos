@@ -13,7 +13,7 @@ from webos_mcp.config import load_settings
 from webos_mcp.errors import Unreachable, WebOsError
 from webos_mcp.probe import any_hello
 
-from .conftest import fast, no_power_state, register, wait_until
+from .conftest import fast, no_power_state, no_screen_off, register, wait_until
 
 pytestmark = pytest.mark.anyio
 
@@ -287,7 +287,7 @@ async def test_volume_owner_override(home, tvs, running):
 
 async def test_screen(home, tvs, running):
     # ASSUMPTION W-SCREEN-OFF: "active" only, never "passive"
-    g1, c7 = await tvs("g1"), await tvs("c7")
+    g1, old = await tvs("g1"), await tvs("c7", faults=no_screen_off())  # a set without the endpoints
     c = await connected(await running(register(g1)))
     assert (await c.set_screen(False)).outcome == "done" and c.power() == "screen_off"
     assert (await c.set_screen(False)).outcome == "unchanged"
@@ -295,7 +295,7 @@ async def test_screen(home, tvs, running):
     assert not g1.screen_unrecoverable
     assert all(p == {"standbyMode": "active"} for _, uri, p in g1.events("request") if "Screen" in uri)
 
-    b = await connected(await running(register(c7)))
+    b = await connected(await running(register(old)))
     with pytest.raises(WebOsError, match="no screen-off command"):
         await b.set_screen(False)
     assert "screen: this TV has no screen-off command" in b.snapshot()["limitations"]

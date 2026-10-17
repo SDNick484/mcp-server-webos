@@ -25,7 +25,7 @@ protocol and will probably work, but nothing is promised for them.
 
 | Room | Model | Platform | Control port | Notes |
 | --- | --- | --- | --- | --- |
-| Bedroom | OLED65C7P-U (2017 C7) | webOS 3.5 | 3000 (ws) | no `now_playing` (no media service); probably no screen-off |
+| Bedroom | OLED65C7P-U (2017 C7) | webOS 3.5 | 3000 (ws) | no `now_playing` (no media service) |
 | Family Room | OLED77G1PUA (2021 G1) | webOS 6.5 | 3000 (ws); 3001 (wss) also open | no `now_playing` (no media service) |
 | Office | OLED65C5PUA (2025 C5) | webOS 25 (26 on offer) | 3001 (wss) | webOS 26 changed pairing (see below) |
 

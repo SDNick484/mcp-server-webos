@@ -195,8 +195,9 @@ async def test_keys_media_screen(two_tvs):
     ok(await c.call_tool("media_control", {"action": "pause", "tv": "g1"}))
     assert "media.controls/pause" in g1.requests
     assert ok(await c.call_tool("set_screen", {"state": "off", "tv": "g1"}))["outcome"] == "done"
-    result = await c.call_tool("set_screen", {"state": "off", "tv": "c7"})
-    assert result.is_error and "no screen-off command" in text(result)
+    # The C7 blanks its screen too (ASSUMPTION W-SCREEN-OFF, seen 2026-10-17)
+    assert ok(await c.call_tool("set_screen", {"state": "off", "tv": "c7"}))["outcome"] == "done"
+    assert c7.power == "Screen Off"
 
 
 async def test_dry_run(home, tvs, fast_clients, monkeypatch):

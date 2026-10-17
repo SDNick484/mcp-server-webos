@@ -185,9 +185,9 @@ mcp-server-webos call set_screen state=on tv="Family Room"
 
 | Check | Bedroom C7 | Family Room G1 | Office C5 |
 | --- | --- | --- | --- |
-| Off: picture blanks, sound continues (W-SCREEN-OFF) | expect "no screen-off command" | | |
-| On: picture returns | | | |
-| power reads screen_off while blank | | | |
+| Off: picture blanks, sound continues (W-SCREEN-OFF) | yes, 2026-10-17 (expected "no screen-off command") | | |
+| On: picture returns | yes | | |
+| power reads screen_off while blank | yes (power_raw "Screen Off") | | |
 
 ## 8. Sources
 

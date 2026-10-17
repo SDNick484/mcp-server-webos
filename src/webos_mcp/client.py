@@ -657,7 +657,7 @@ class TvClient:
     async def set_screen(self, on: bool) -> Result:
         self._require_awake()
         if self.screen_unsupported:
-            raise WebOsError(f"{self.name} has no screen-off command (webOS 3.x and older lack it).")
+            raise WebOsError(f"{self.name} has no screen-off command (some older webOS sets lack it).")
         if self.cache.power and self.power() == ("on" if on else "screen_off"):
             return Result(f"{self.name}'s screen is already {'on' if on else 'off'}", [], "unchanged")
         uris = SCREEN_ON_URIS if on else SCREEN_OFF_URIS
@@ -673,7 +673,7 @@ class TvClient:
                 continue
         else:
             self.screen_unsupported = True
-            raise WebOsError(f"{self.name} has no screen-off command (webOS 3.x and older lack it).")
+            raise WebOsError(f"{self.name} has no screen-off command (some older webOS sets lack it).")
         want = "on" if on else "screen_off"
         if not self.cache.power or await self._wait_for(lambda: self.power() == want, 5.0):
             return Result(f"{self.name}'s screen is {'on' if on else 'off'}", sent)

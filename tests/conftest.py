@@ -54,6 +54,15 @@ def no_power_state():
     return Faults(deny={"com.webos.service.tvpower/power/getPowerState": NOT_FOUND})
 
 
+def no_screen_off():
+    """A TV with neither screen-off endpoint (404 on both), as some older sets may be (ASSUMPTION W-SCREEN-OFF).
+    None of the owner's TVs is one: the C7 blanks its screen like the newer TVs."""
+    from webos_mcp.client import SCREEN_OFF_URIS, SCREEN_ON_URIS
+    from webos_mcp.sim.fake_tv import NOT_FOUND, Faults
+
+    return Faults(deny=dict.fromkeys(SCREEN_OFF_URIS + SCREEN_ON_URIS, NOT_FOUND))
+
+
 KEY = "0123456789abcdef0123456789abcdef"
 NAMES = {"c7": "Bedroom", "g1": "Family Room", "c5-webos25": "Office", "c5-webos26": "Office"}
 
