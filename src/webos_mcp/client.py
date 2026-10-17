@@ -524,6 +524,8 @@ class TvClient:
             limits.append(
                 f"volume: belongs to the receiver (sound output {self.cache.sound_output}); use its own server"
             )
+        elif owner == "unknown":  # e.g. a TV that has been off since the server started: _require_volume refuses
+            limits.append("volume: not known yet where this TV's sound goes (it reports that once it answers)")
         else:
             caps.append("volume")
         return caps, limits

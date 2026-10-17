@@ -66,6 +66,16 @@ async def test_c7_reports_its_power_state(home, tvs, running):
     assert not any("inferred" in lim for lim in s["limitations"])
 
 
+async def test_volume_is_not_offered_before_the_sound_output_is_known(home, tvs, running):
+    # A TV that has been off since the server started: no sound output yet, so no volume (it may be the receiver's)
+    tv = await tvs("g1")
+    await tv.unplug()
+    c = await running(register(tv))
+    caps, limits = c.capabilities()
+    assert c.volume_owner() == "unknown" and "volume" not in caps
+    assert any(lim.startswith("volume: not known yet") for lim in limits)
+
+
 async def test_tv_without_power_state(home, tvs, running):
     # ASSUMPTION W-C7-NO-POWERSTATE: an older set without getPowerState; power comes from the foreground app
     tv = await tvs("c7", faults=no_power_state())
