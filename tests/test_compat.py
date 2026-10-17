@@ -54,7 +54,7 @@ def test_what_we_read_from_the_library_exists():
 
 # --- registration ------------------------------------------------------------------------
 async def test_pairing_waits_for_acceptance(tvs):
-    tv = await tvs("g1", accept_after=0.3)
+    tv = await tvs("c5-webos25", accept_after=0.3)  # TLS only: the session is on 3001
     client = CompatClient(tv.host, None, pair_timeout=5)
     await client.connect()
     try:

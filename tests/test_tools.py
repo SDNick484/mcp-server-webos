@@ -143,7 +143,7 @@ async def test_list_tvs(two_tvs):
         "tv": "Family Room",
         "aliases": ["G1"],
         "model": "OLED77G1PUA",
-        "platform": "6.3.1",
+        "platform": "6.5.3",
         "paired": True,
         "reachable": True,
     }

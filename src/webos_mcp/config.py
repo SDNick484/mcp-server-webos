@@ -19,7 +19,7 @@ max_volume and volume_owner):
       "tvs": [
         {"name": "Family Room", "aliases": ["G1", "OLED77G1PUA"], "host": "192.168.1.50",
          "uuid": "3f2b8c1e-...", "macs": ["a8:23:fe:..."], "model": "OLED77G1PUA",
-         "platform": "6.3.1", "cert_sha256": "9c1f...", "max_volume": 40, "volume_owner": "auto"}
+         "platform": "6.5.3", "cert_sha256": "9c1f...", "max_volume": 40, "volume_owner": "auto"}
       ],
       "apps": {"crunchyroll": "crunchyroll.app.id"}
     }

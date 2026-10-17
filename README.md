@@ -329,6 +329,12 @@ the pointer socket, and Wake-on-LAN. The real aiowebostv connects to it. Profile
 3001, so each simulated TV binds the real ports on its own loopback address (127.0.0.2-5): on
 Linux all of 127.0.0.0/8 is loopback. (macOS needs loopback aliases for that.)
 
+**WSL2 with mirrored networking** (`networkingMode=mirrored` in `.wslconfig`): Windows then
+handles loopback and answers only 127.0.0.1, so the simulator tests hang and time out. Run them
+with `scripts/test-wsl.sh [pytest args]`, which runs pytest in a network namespace of its own
+(ordinary Linux loopback, no other network; needs `unshare` and `ip`, and root or sudo). WSL2's
+default NAT networking doesn't need it.
+
 `mcp-server-webos capture --tv <name> --profile <p>` records a real TV's answers to read-only
 requests, redacted; committed to `src/webos_mcp/sim/fixtures/`, each capture becomes a contract
 test against its simulator profile.
@@ -344,12 +350,12 @@ says which step confirms each.
 | `W-MANIFEST` | high | simulator-only |
 | `W-SIGNED-403` | high | simulator-only |
 | `W-KEY-SURVIVES` | low | simulator-only |
-| `W-REGISTERED-DIRECT` | high | simulator-only |
+| `W-REGISTERED-DIRECT` | high | hardware-verified |
 | `W-STALE-KEY` | medium | simulator-only |
 | `W-PROMPT-DISMISS` | low | simulator-only |
 | `W-PAIR-WINDOW` | low | simulator-only |
-| `W-HELLO-VERSION` | high | simulator-only |
-| `W-SWINFO-401` | high | simulator-only |
+| `W-HELLO-VERSION` | high | hardware-verified |
+| `W-SWINFO-401` | high | hardware-verified |
 | `W-UUID-STABLE` | medium | simulator-only |
 | `W-PORTS` | medium | simulator-only |
 | `W-PORT3000-CLOSE` | medium | simulator-only |
@@ -369,13 +375,13 @@ says which step confirms each.
 | `W-SCREEN-OFF` | medium | simulator-only |
 | `W-KEYS` | medium | simulator-only |
 | `W-MEDIA-CONTROLS` | low | simulator-only |
-| `W-NOW-PLAYING` | medium | simulator-only |
+| `W-NOW-PLAYING` | medium | hardware-verified |
 | `W-SOUND-OUTPUT` | medium | simulator-only |
 | `W-VOLUME-ARC` | medium | simulator-only |
 | `W-APP-IDS` | low | simulator-only |
 | `W-SYSTEM-APP-IDS` | medium | simulator-only |
 | `W-INPUT-IDS` | medium | simulator-only |
-| `W-SSDP` | medium | simulator-only |
+| `W-SSDP` | medium | hardware-verified |
 
 ## License
 

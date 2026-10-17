@@ -23,7 +23,8 @@ pytestmark = pytest.mark.anyio
 
 @pytest.mark.parametrize(
     ("profile", "port", "power_state"),
-    [("c7", 3000, False), ("g1", 3001, True), ("c5-webos25", 3001, True), ("c5-webos26", 3001, True)],
+    # The G1 answers plain ws on 3000 as well as wss on 3001, and aiowebostv takes 3000 (its doctor run)
+    [("c7", 3000, False), ("g1", 3000, True), ("c5-webos25", 3001, True), ("c5-webos26", 3001, True)],
 )
 async def test_pairs_and_subscribes(tvs, profile, port, power_state):
     # ASSUMPTION W-PORTS, W-MANIFEST, W-SUBSCRIBE
