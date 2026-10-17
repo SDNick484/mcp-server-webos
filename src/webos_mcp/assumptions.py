@@ -118,7 +118,8 @@ ASSUMPTIONS: tuple[Assumption, ...] = (
     Assumption(
         "W-SWINFO-401",
         "com.webos.service.update/getCurrentSWInformation answers 401 to an unsigned-manifest key (not only on "
-        "webOS 26: the C5 on webOS 25 and the G1 on webOS 6 do too); aiowebostv >=0.9.2 ignores that, and this "
+        "webOS 26: the C7 on webOS 3.5, the G1 on webOS 6 and the C5 on webOS 25 do too); aiowebostv >=0.9.2 "
+        "ignores that, and this "
         "server never needs it.",
         "HA core issue #172703 (G5, 11.2.0); aiowebostv 0.9.2's suppress() around get_software_info; the Office C5's "
         "and Family Room G1's captures",
@@ -126,8 +127,8 @@ ASSUMPTIONS: tuple[Assumption, ...] = (
         status="hardware-verified",
         note="2026-10-16, Office C5 on webOS 25 (10.3.1): '401 insufficient permissions', and get_status worked "
         "regardless; the Family Room G1 on webOS 6.5.3 the same. This used to say webOS 26 only; the contract "
-        "test caught it. Probably the unsigned manifest never had this permission, so the C7 may refuse it too: "
-        "its profile still answers until it is captured.",
+        "test caught it. 2026-10-17, the Bedroom C7 on webOS 3.5: the same. So the unsigned manifest never had "
+        "this permission, on any webOS version.",
     ),
     Assumption(
         "W-UUID-STABLE",
@@ -200,13 +201,18 @@ ASSUMPTIONS: tuple[Assumption, ...] = (
         "with processing 'Screen On' while waking.",
         "lgpowercontrol's virtual TV (strings observed on an OLED42C35LA, 2026-08); aiowebostv _is_tv_on",
         "high",
-        note="High for the newer TVs; the C7 probably has no getPowerState (W-C7-NO-POWERSTATE).",
+        note="All three TVs answer getPowerState (the C7 too, against W-C7-NO-POWERSTATE). Which of these "
+        "strings each one uses in each state is not checked yet (HARDWARE_VALIDATION step 5).",
     ),
     Assumption(
         "W-C7-NO-POWERSTATE",
         "The C7 answers 404 to getPowerState; aiowebostv then treats the TV as on whenever an app is in front.",
         "aiowebostv 0.7.2 and 0.7.3 'power state for older webOS' fixes",
         "low",
+        status="hardware-contradicted",
+        note="2026-10-17, Bedroom C7 (webOS 3.5): it answers getPowerState like the newer TVs. The fallback "
+        "(power inferred from the foreground app) stays for older sets that really lack the call; the tests "
+        "reach it with a fault (conftest.no_power_state), not the c7 profile.",
     ),
     Assumption(
         "W-STANDBY-SOCKET",
@@ -286,13 +292,13 @@ ASSUMPTIONS: tuple[Assumption, ...] = (
     Assumption(
         "W-NOW-PLAYING",
         "com.webos.media/getForegroundAppInfo gives the app and a playState (e.g. playing, paused), and no title, "
-        "on webOS 25; webOS 6 doesn't have it (404), so now_playing is always null on the G1.",
+        "on webOS 25; webOS 3.5 and 6 don't have it (404), so now_playing is always null on the C7 and G1.",
         "aiowebostv's media_state; lgtv-mcp; the Office C5's and Family Room G1's captures",
         "medium",
         status="hardware-verified",
         note="2026-10-16: the C5 (webOS 25) answers it in the simulator's shape; the G1 (webOS 6.5.3) answers "
-        "'404 no such service or method', and aiowebostv's subscription to it fails quietly (W-SUBSCRIBE). The "
-        "C7 is not checked yet; its profile still answers.",
+        "'404 no such service or method', and aiowebostv's subscription to it fails quietly (W-SUBSCRIBE). "
+        "2026-10-17: the C7 (webOS 3.5) answers 404 as well.",
     ),
     Assumption(
         "W-SOUND-OUTPUT",

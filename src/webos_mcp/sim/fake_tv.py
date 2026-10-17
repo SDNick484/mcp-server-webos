@@ -421,7 +421,10 @@ class FakeTv:
     async def _handle(self, uri: str, payload: dict[str, Any]) -> dict[str, Any]:  # noqa: C901 - one table
         p = self.profile
         if uri == "system/getSystemInfo":
-            return {"modelName": p.model, "serialNumber": p.serial, "features": {}, "receiverType": "atsc"}
+            info: dict[str, Any] = {"modelName": p.model, "features": {}, "receiverType": "atsc"}
+            if p.serial is not None:
+                info["serialNumber"] = p.serial
+            return info
         if uri == "com.webos.service.update/getCurrentSWInformation":
             if p.software_info is None:
                 raise SsapError(DENIED)  # ASSUMPTION W-SWINFO-401

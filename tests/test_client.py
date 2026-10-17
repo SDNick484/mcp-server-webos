@@ -13,7 +13,7 @@ from webos_mcp.config import load_settings
 from webos_mcp.errors import Unreachable, WebOsError
 from webos_mcp.probe import any_hello
 
-from .conftest import fast, register, wait_until
+from .conftest import fast, no_power_state, register, wait_until
 
 pytestmark = pytest.mark.anyio
 
@@ -57,12 +57,21 @@ async def test_status_from_pushed_state(home, tvs, running):
     assert any(lim.startswith("volume: belongs to the receiver") for lim in s["limitations"])
 
 
-async def test_c7_has_no_power_state(home, tvs, running):
-    # ASSUMPTION W-C7-NO-POWERSTATE
+async def test_c7_reports_its_power_state(home, tvs, running):
+    # ASSUMPTION W-C7-NO-POWERSTATE was wrong: the C7 answers getPowerState like the newer TVs
     tv = await tvs("c7")
     c = await connected(await running(register(tv)))
     s = c.snapshot()
-    assert s["power"] == "on" and s["power_raw"] is None and s["volume_owner"] == "tv"
+    assert s["power"] == "on" and s["power_raw"] == "Active" and s["volume_owner"] == "tv"
+    assert not any("inferred" in lim for lim in s["limitations"])
+
+
+async def test_tv_without_power_state(home, tvs, running):
+    # ASSUMPTION W-C7-NO-POWERSTATE: an older set without getPowerState; power comes from the foreground app
+    tv = await tvs("c7", faults=no_power_state())
+    c = await connected(await running(register(tv)))
+    s = c.snapshot()
+    assert s["power"] == "on" and s["power_raw"] is None
     assert any("inferred from the foreground app" in lim for lim in s["limitations"])
 
 

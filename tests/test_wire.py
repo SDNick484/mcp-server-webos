@@ -24,7 +24,8 @@ pytestmark = pytest.mark.anyio
 @pytest.mark.parametrize(
     ("profile", "port", "power_state"),
     # The G1 answers plain ws on 3000 as well as wss on 3001, and aiowebostv takes 3000 (its doctor run)
-    [("c7", 3000, False), ("g1", 3000, True), ("c5-webos25", 3001, True), ("c5-webos26", 3001, True)],
+    # Every TV answers getPowerState, the C7 included (its capture); the no-power-state case is a fault below
+    [("c7", 3000, True), ("g1", 3000, True), ("c5-webos25", 3001, True), ("c5-webos26", 3001, True)],
 )
 async def test_pairs_and_subscribes(tvs, profile, port, power_state):
     # ASSUMPTION W-PORTS, W-MANIFEST, W-SUBSCRIBE
@@ -43,6 +44,19 @@ async def test_pairs_and_subscribes(tvs, profile, port, power_state):
                 break
             await asyncio.sleep(0.02)
         assert client.tv_state.volume == 20  # pushed back over the subscription
+    finally:
+        await client.disconnect()
+
+
+async def test_no_power_state_means_on_while_an_app_is_in_front(tvs):
+    # ASSUMPTION W-C7-NO-POWERSTATE: what aiowebostv does for a set without getPowerState (older than the C7)
+    from .conftest import no_power_state
+
+    tv = await tvs("c7", faults=no_power_state())
+    client = WebOsClient(tv.host, None)
+    try:
+        await client.connect()
+        assert not client.tv_state.power_state and client.tv_state.is_on
     finally:
         await client.disconnect()
 

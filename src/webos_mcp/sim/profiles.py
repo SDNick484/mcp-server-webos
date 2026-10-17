@@ -62,13 +62,13 @@ class Profile:
     os_version: str  # hello deviceOSVersion
     release_version: str  # hello deviceOSReleaseVersion (ASSUMPTION W-HELLO-VERSION)
     uuid: str
-    serial: str
+    serial: str | None  # None: getSystemInfo has no serialNumber (the C7's capture)
     wired_mac: str
     wifi_mac: str
     wired: bool  # which interface the TV uses
     port3000: Port3000  # ASSUMPTION W-PORTS, W-PORT3000-CLOSE
     wss: bool  # answers TLS WebSocket on 3001
-    power_state: bool  # getPowerState exists (ASSUMPTION W-C7-NO-POWERSTATE)
+    power_state: bool  # getPowerState exists; False: 404, as on pre-2017 sets (ASSUMPTION W-C7-NO-POWERSTATE)
     screen_off_uri: str | None  # None: no screen-off endpoint (ASSUMPTION W-SCREEN-OFF)
     standby_socket: bool  # the socket stays up in standby (ASSUMPTION W-STANDBY-SOCKET)
     blacklist_signature: bool  # 403 for a signed manifest (ASSUMPTION W-SIGNED-403)
@@ -90,21 +90,21 @@ PROFILES: dict[str, Profile] = {
         os_version="1.2.0",  # GUESSED
         release_version="3.5.0",  # GUESSED: the C7's hello has never been captured
         uuid="7c7c7c7c-0000-4000-8000-000000000017",
-        serial="707ABCD00017",
+        serial=None,  # no serialNumber in getSystemInfo: the Bedroom C7's capture, 2026-10-17
         wired_mac="a8:23:fe:00:17:01",
         wifi_mac="a8:23:fe:00:17:02",
         wired=True,
         port3000="ws",
         wss=False,
-        power_state=False,
+        power_state=True,  # it answers getPowerState after all: the C7's capture, 2026-10-17 (W-C7-NO-POWERSTATE)
         screen_off_uri=None,
         standby_socket=False,
         blacklist_signature=False,
-        software_info={"product_name": "webOSTV 3.5", "major_ver": "06", "minor_ver": "10.65"},
+        software_info=None,  # 401 on webOS 3.5 too: the C7's capture, 2026-10-17 (W-SWINFO-401)
         pairing_types=("PROMPT", "PIN"),
         sound_output="tv_speaker",
         volume_flat=True,
-        media_info=True,  # GUESSED: not captured yet (the G1 lacks it, so the C7 may too)
+        media_info=False,  # 404, as on the G1: the C7's capture, 2026-10-17 (W-NOW-PLAYING)
     ),
     "g1": Profile(
         key="g1",

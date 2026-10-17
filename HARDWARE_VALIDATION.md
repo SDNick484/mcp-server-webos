@@ -70,7 +70,7 @@ So the C5 gets captured on webOS 25 first, and again after the update.
 | Check | Bedroom C7 | Family Room G1 | Office C5 |
 | --- | --- | --- | --- |
 | Version noted, auto-update off | n/a | n/a | |
-| Captured, contract test passes | | captured 2026-10-16 | passes, 2026-10-16 |
+| Captured, contract test passes | captured 2026-10-17 | passes, 2026-10-16 | passes, 2026-10-16 |
 | `hello.deviceOSReleaseVersion` (W-HELLO-VERSION) | | 6.5.3 | 10.3.1 |
 
 ## 2. Settings on each TV
@@ -128,7 +128,7 @@ mcp-server-webos doctor --no-redact # addresses shown (keys never are)
 | hello: platform, pairing types | | 6.5.3; PIN, PROMPT, COMBINED | |
 | hello: TLS fingerprint; same after a TV reboot? (W-TLS-CERT) | n/a | | |
 | session: buttons allowed (W-INPUT-SOCKET) | | yes | |
-| session: refused calls (W-SWINFO-401; also W-NOW-PLAYING on the G1) | | getCurrentSWInformation 401, media getForegroundAppInfo 404 | getCurrentSWInformation 401 |
+| session: refused calls (W-SWINFO-401; also W-NOW-PLAYING on the C7 and G1) | getCurrentSWInformation 401, media getForegroundAppInfo 404 (capture) | getCurrentSWInformation 401, media getForegroundAppInfo 404 | getCurrentSWInformation 401 |
 | session: connected at all, i.e. no subscription refused (W-SUBSCRIBE) | | yes (one 404, tolerated) | yes |
 | deviceUUID unchanged after a TV reboot (W-UUID-STABLE) | | | |
 | Log lines redacted (no serial, UUID or key in `--debug` output) | | | |
@@ -145,9 +145,9 @@ call `get_status` repeatedly): the values should follow within a second.
 | Check | Bedroom C7 | Family Room G1 | Office C5 |
 | --- | --- | --- | --- |
 | power_raw strings seen (W-POWER-STATES) | | | |
-| No power_raw, power inferred (W-C7-NO-POWERSTATE) | | n/a | n/a |
+| No power_raw, power inferred (W-C7-NO-POWERSTATE) | contradicted: getPowerState answers (capture, 2026-10-17) | n/a | n/a |
 | sound_output, with and without the receiver (W-SOUND-OUTPUT) | | | |
-| now_playing app and play_state in Netflix, YouTube (W-NOW-PLAYING) | | never: no such service (404) | |
+| now_playing app and play_state in Netflix, YouTube (W-NOW-PLAYING) | never: no such service (404) | never: no such service (404) | |
 | input label when on HDMI | | | |
 
 ## 6. Power off and Wake-on-LAN
