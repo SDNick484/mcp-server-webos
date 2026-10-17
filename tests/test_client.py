@@ -13,7 +13,7 @@ from webos_mcp.config import load_settings
 from webos_mcp.errors import Unreachable, WebOsError
 from webos_mcp.probe import any_hello
 
-from .conftest import fast, register, wait_until
+from .conftest import fast, no_power_state, no_screen_off, register, wait_until
 
 pytestmark = pytest.mark.anyio
 
@@ -57,12 +57,31 @@ async def test_status_from_pushed_state(home, tvs, running):
     assert any(lim.startswith("volume: belongs to the receiver") for lim in s["limitations"])
 
 
-async def test_c7_has_no_power_state(home, tvs, running):
-    # ASSUMPTION W-C7-NO-POWERSTATE
+async def test_c7_reports_its_power_state(home, tvs, running):
+    # ASSUMPTION W-C7-NO-POWERSTATE was wrong: the C7 answers getPowerState like the newer TVs
     tv = await tvs("c7")
     c = await connected(await running(register(tv)))
     s = c.snapshot()
-    assert s["power"] == "on" and s["power_raw"] is None and s["volume_owner"] == "tv"
+    assert s["power"] == "on" and s["power_raw"] == "Active" and s["volume_owner"] == "tv"
+    assert not any("inferred" in lim for lim in s["limitations"])
+
+
+async def test_volume_is_not_offered_before_the_sound_output_is_known(home, tvs, running):
+    # A TV that has been off since the server started: no sound output yet, so no volume (it may be the receiver's)
+    tv = await tvs("g1")
+    await tv.unplug()
+    c = await running(register(tv))
+    caps, limits = c.capabilities()
+    assert c.volume_owner() == "unknown" and "volume" not in caps
+    assert any(lim.startswith("volume: not known yet") for lim in limits)
+
+
+async def test_tv_without_power_state(home, tvs, running):
+    # ASSUMPTION W-C7-NO-POWERSTATE: an older set without getPowerState; power comes from the foreground app
+    tv = await tvs("c7", faults=no_power_state())
+    c = await connected(await running(register(tv)))
+    s = c.snapshot()
+    assert s["power"] == "on" and s["power_raw"] is None
     assert any("inferred from the foreground app" in lim for lim in s["limitations"])
 
 
@@ -268,7 +287,7 @@ async def test_volume_owner_override(home, tvs, running):
 
 async def test_screen(home, tvs, running):
     # ASSUMPTION W-SCREEN-OFF: "active" only, never "passive"
-    g1, c7 = await tvs("g1"), await tvs("c7")
+    g1, old = await tvs("g1"), await tvs("c7", faults=no_screen_off())  # a set without the endpoints
     c = await connected(await running(register(g1)))
     assert (await c.set_screen(False)).outcome == "done" and c.power() == "screen_off"
     assert (await c.set_screen(False)).outcome == "unchanged"
@@ -276,7 +295,7 @@ async def test_screen(home, tvs, running):
     assert not g1.screen_unrecoverable
     assert all(p == {"standbyMode": "active"} for _, uri, p in g1.events("request") if "Screen" in uri)
 
-    b = await connected(await running(register(c7)))
+    b = await connected(await running(register(old)))
     with pytest.raises(WebOsError, match="no screen-off command"):
         await b.set_screen(False)
     assert "screen: this TV has no screen-off command" in b.snapshot()["limitations"]

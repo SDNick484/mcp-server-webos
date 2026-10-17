@@ -7,9 +7,9 @@ connector name (e.g. `webos`).
 
 | Room | TV | Notes |
 | --- | --- | --- |
-| Family Room | 77" G1 (webOS 6) | sound to the receiver over eARC: volume_owner "external" |
+| Family Room | 77" G1 (webOS 6) | sound to the receiver over eARC: volume_owner "external"; now_playing always null |
 | Office | 65" C5 (webOS 25/26) | sound to the receiver over eARC: volume_owner "external" |
-| Bedroom | 65" C7 (webOS 3.5) | no screen-off; power state inferred |
+| Bedroom | 65" C7 (webOS 3.5) | own speakers; now_playing always null |
 
 (Expected values; confirm with `get_status` and update after the hardware pass.)
 

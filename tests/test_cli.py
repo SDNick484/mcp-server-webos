@@ -182,8 +182,8 @@ async def test_check(home, tvs, capsys):
     register(tv)
     assert await cli._cmd_check(argparse.Namespace(tv=None)) == 0
     out = capsys.readouterr().out
-    assert "Bedroom: OLED65C7P-U, webOS 3.5.0" in out and "can't: screen" not in out
-    assert "power state: inferred" in out
+    assert "Bedroom: OLED65C7P-U, webOS 3.9.3" in out and "can't: screen" not in out
+    assert "power state: inferred" not in out  # the C7 reports one after all (W-C7-NO-POWERSTATE)
 
 
 async def test_call(home, tvs, capsys):
