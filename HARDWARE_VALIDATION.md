@@ -71,7 +71,7 @@ So the C5 gets captured on webOS 25 first, and again after the update.
 | --- | --- | --- | --- |
 | Version noted, auto-update off | n/a | n/a | |
 | Captured, contract test passes | captured 2026-10-17 | passes, 2026-10-16 | passes, 2026-10-16 |
-| `hello.deviceOSReleaseVersion` (W-HELLO-VERSION) | | 6.5.3 | 10.3.1 |
+| `hello.deviceOSReleaseVersion` (W-HELLO-VERSION) | 3.9.3 | 6.5.3 | 10.3.1 |
 
 ## 2. Settings on each TV
 

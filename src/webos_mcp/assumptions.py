@@ -113,7 +113,7 @@ ASSUMPTIONS: tuple[Assumption, ...] = (
         "high",
         status="hardware-verified",
         note="2026-10-16: the C5 says 10.3.1 and the G1 6.5.3, each with its deviceUUID and pairing types (G1: PIN, "
-        "PROMPT, COMBINED). The C7 (webOS 3.5) is not checked yet.",
+        "PROMPT, COMBINED). 2026-10-17: the C7 (sold as webOS 3.5) says 3.9.3.",
     ),
     Assumption(
         "W-SWINFO-401",
