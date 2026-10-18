@@ -54,7 +54,7 @@ from aiowebostv.models import WebOsTvState
 from typing_extensions import TypedDict
 
 from . import config, discovery, keystore, probe, wol
-from .compat import CompatClient, KeyNotAccepted, PairingRefused, WrongDevice
+from .compat import HANDSHAKE_CLOSED, CompatClient, KeyNotAccepted, PairingRefused, WrongDevice
 from .config import Settings, TvSettings, name_key
 from .errors import Unreachable, WebOsError
 from .tasks import stop_task
@@ -179,7 +179,7 @@ class TvClient:
     watch_interval = 5.0  # how often a TV waiting for pairing checks keys.json
     rediscover_after = 60.0
     rediscover_every = 300.0
-    wake_wait = 20.0  # ASSUMPTION W-WAKE-TIME: ~4-5 s on real TVs
+    wake_wait = 45.0  # ASSUMPTION W-WAKE-TIME: the C5 took ~10 s to show a picture, 17-18 s to answer
     confirm_wait = 10.0
 
     def __init__(
@@ -266,7 +266,7 @@ class TvClient:
                 raise
             except Exception:
                 log.exception("%s: the connection supervisor failed; it will try again", self.name)
-                await self._sleep(self.poll_interval)
+                await self._sleep(self.fast_poll if time.monotonic() < self._fast_until else self.poll_interval)
 
     async def _sleep(self, delay: float) -> None:
         self._kick.clear()
@@ -326,6 +326,11 @@ class TvClient:
             except (TimeoutError, OSError, aiohttp.ClientError, WebOsTvCommandError) as exc:
                 await self._discard(client)
                 self._set_reachable(False, _describe(exc))
+                return False
+            except HANDSHAKE_CLOSED:
+                # ASSUMPTION W-HELLO-1008: still starting (e.g. waking); the next attempt usually works
+                await self._discard(client)
+                self._set_reachable(False, "the TV closed the connection before answering (still starting?)")
                 return False
             finally:
                 self._pending = None
@@ -610,7 +615,7 @@ class TvClient:
             )
         s = self.settings
         targets = [
-            f"wol {mac} -> {a}:{p}"
+            f"wol {wol.shown(mac)} -> {a}:{p}"
             for mac in self.tv.macs
             for a, p in wol.targets(self.tv.host, s.wol_broadcast, s.wol_port)
         ]

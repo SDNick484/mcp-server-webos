@@ -35,3 +35,21 @@ def test_formatter_without_address_redaction_still_hides_keys():
     )
     assert Formatter("%(message)s", addresses=False).format(record) == f"key [key redacted] at 192.168.1.60 {UUID}"
     assert Formatter("%(message)s").format(record) == "key [key redacted] at x.x.x.60 [uuid …0025]"
+
+
+def test_log_lines_start_with_a_timestamp(capsys):
+    # A service log without times can't be read against what happened (the Office C5's wake, 2026-10-17)
+    import re
+
+    from webos_mcp.redact import setup_logging
+
+    root = logging.getLogger()
+    saved = root.handlers[:], root.level
+    try:
+        setup_logging(logging.INFO)
+        logging.getLogger("webos_mcp.client").info("Office TV: unreachable -> reachable")
+    finally:
+        root.handlers[:], level = saved
+        root.setLevel(level)
+    line = capsys.readouterr().err.strip()
+    assert re.match(r"\d{4}-\d\d-\d\d \d\d:\d\d:\d\d,\d{3} INFO webos_mcp.client: Office TV", line), line

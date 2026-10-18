@@ -7,7 +7,7 @@ import json
 
 import pytest
 
-from webos_mcp import keystore
+from webos_mcp import keystore, wol
 from webos_mcp.client import TvClient, clean
 from webos_mcp.config import load_settings
 from webos_mcp.errors import Unreachable, WebOsError
@@ -85,6 +85,17 @@ async def test_tv_without_power_state(home, tvs, running):
     assert any("inferred from the foreground app" in lim for lim in s["limitations"])
 
 
+async def test_a_close_before_the_hello_is_an_ordinary_retry(home, tvs, running, caplog):
+    # ASSUMPTION W-HELLO-1008: the Office C5 did this; it used to reach the supervisor's catch-all (an ERROR and
+    # a full poll interval) instead of being retried like any failed attempt
+    from webos_mcp.sim.fake_tv import Faults
+
+    tv = await tvs("c5-webos25", faults=Faults(close_before_hello=2))
+    c = await connected(await running(register(tv)))
+    assert c.reachable and tv.events("closed-at-hello") == [("closed-at-hello",)] * 2
+    assert not [r for r in caplog.records if "supervisor failed" in r.getMessage()]
+
+
 async def test_unplugged_tv_goes_stale_and_keeps_its_last_values(home, tvs, running):
     tv = await tvs("c7")
     c = await connected(await running(register(tv)))
@@ -105,7 +116,7 @@ async def test_power_on_with_wake_on_lan(home, tvs, running):
     await wait_until(lambda: not c.reachable)
     result = await c.power_on()
     assert result.outcome == "done" and "is on" in result.detail and not result.warnings
-    assert result.sent[0].startswith(f"wol {tv.mac} -> ")
+    assert result.sent[0].startswith(f"wol {wol.shown(tv.mac)} -> ") and tv.mac not in str(result.sent)
     assert tv.events("wol") and c.reachable
     again = await c.power_on()
     assert (again.outcome, again.sent) == ("unchanged", [])

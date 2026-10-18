@@ -144,10 +144,10 @@ call `get_status` repeatedly): the values should follow within a second.
 
 | Check | Bedroom C7 | Family Room G1 | Office C5 |
 | --- | --- | --- | --- |
-| power_raw strings seen (W-POWER-STATES) | | | |
+| power_raw strings seen (W-POWER-STATES) | Active, Screen Off |  | Active, Screen Saver, Active Standby |
 | No power_raw, power inferred (W-C7-NO-POWERSTATE) | contradicted: getPowerState answers (capture, 2026-10-17) | n/a | n/a |
 | sound_output, with and without the receiver (W-SOUND-OUTPUT) | | | |
-| now_playing app and play_state in Netflix, YouTube (W-NOW-PLAYING) | never: no such service (404) | never: no such service (404) | |
+| now_playing app and play_state in Netflix, YouTube (W-NOW-PLAYING) | never: no such service (404) | never: no such service (404) | Netflix: playing, paused |
 | input label when on HDMI | | | |
 
 ## 6. Power off and Wake-on-LAN
@@ -166,15 +166,17 @@ mcp-server-webos call set_power state=on tv=Bedroom
 - From the Alpine LXC as well: `doctor` shows the local address the packet goes out from; it
   must be on the TVs' network (the container bridged, not NAT).
 - Nothing other than Wake-on-LAN turns a TV on (W-TURNON-DEAD): don't expect `system/turnOn`.
+- While waking, a TV may accept the connection and close it (code 1008) before its hello; the server
+  retries at once (W-HELLO-1008). The service log now has timestamps: compare the call with "reachable".
 
 | Check | Bedroom C7 | Family Room G1 | Office C5 |
 | --- | --- | --- | --- |
-| After off: standby with socket, or gone (W-STANDBY-SOCKET) | | | |
+| After off: standby with socket, or gone (W-STANDBY-SOCKET) |  |  | gone after Active Standby (Always Ready off) |
 | Second off: unchanged (W-OFF-GUARD) | | | |
 | Wakes by WoL from this machine (W-WOL) | | | |
-| Wakes by WoL from the LXC | | | |
-| Seconds to awake (W-WAKE-TIME) | | | |
-| Works over Wi-Fi? (W-WOL-PATH) | | | |
+| Wakes by WoL from the LXC |  |  | yes, 2/2 |
+| Seconds to awake (W-WAKE-TIME) |  |  | picture ~10 s; server 17-18 s (W-HELLO-1008 bug) |
+| Works over Wi-Fi? (W-WOL-PATH) |  |  | wired |
 
 ## 7. Screen off and on
 
@@ -185,9 +187,9 @@ mcp-server-webos call set_screen state=on tv="Family Room"
 
 | Check | Bedroom C7 | Family Room G1 | Office C5 |
 | --- | --- | --- | --- |
-| Off: picture blanks, sound continues (W-SCREEN-OFF) | yes, 2026-10-17 (expected "no screen-off command") | | |
-| On: picture returns | yes | | |
-| power reads screen_off while blank | yes (power_raw "Screen Off") | | |
+| Off: picture blanks, sound continues (W-SCREEN-OFF) | yes, 2026-10-17 (expected "no screen-off command") |  | yes, with Netflix playing, 2026-10-17 |
+| On: picture returns | yes |  | yes |
+| power reads screen_off while blank | yes (power_raw "Screen Off") |  | yes |
 
 ## 8. Sources
 
@@ -207,9 +209,9 @@ mcp-server-webos call select_source source=Onkyo tv=Office     # your label for 
 | --- | --- | --- | --- |
 | Default app ids that match (W-APP-IDS) | | | 2026-10-14: 5 of 7 (no plex, spotify) |
 | `apps` groups LG's apps as system or excluded (W-SYSTEM-APP-IDS) | | | |
-| Inputs listed with your labels (W-INPUT-IDS) | | | |
-| select_source confirms an app | | | |
-| select_source confirms an input | | | |
+| Inputs listed with your labels (W-INPUT-IDS) |  |  | HDMI_1..4; HDMI_2 'Onkyo Home Theater' |
+| select_source confirms an app |  |  | netflix |
+| select_source confirms an input |  |  | Onkyo Home Theater |
 
 ## 9. Keys and media controls
 
@@ -221,8 +223,8 @@ mcp-server-webos call media_control action=pause tv=Bedroom   # with something p
 
 | Check | Bedroom C7 | Family Room G1 | Office C5 |
 | --- | --- | --- | --- |
-| HOME, arrows, ENTER, BACK act (W-KEYS) | | | |
-| pause/play act in Netflix (W-MEDIA-CONTROLS) | | | |
+| HOME, arrows, ENTER, BACK act (W-KEYS) |  |  | RIGHT (first press after launch lost) |
+| pause/play act in Netflix (W-MEDIA-CONTROLS) |  |  | yes |
 | pause/play act in YouTube (W-MEDIA-CONTROLS) | | | |
 
 ## 10. Volume and the receiver
@@ -234,7 +236,7 @@ volume on the TV's own remote and watching the receiver.
 
 | Check | Bedroom C7 | Family Room G1 | Office C5 |
 | --- | --- | --- | --- |
-| volume_owner as expected (W-SOUND-OUTPUT) | | | |
+| volume_owner as expected (W-SOUND-OUTPUT) | tv | external | external, set_volume refused |
 | TV remote volume moves the receiver's (W-VOLUME-ARC) | | | |
 | On TV speakers: set_volume capped at max_volume | | | |
 

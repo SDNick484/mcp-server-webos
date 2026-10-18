@@ -201,7 +201,7 @@ async def get_status(tv: TvArg = None) -> StatusReport:
 async def set_power(state: Literal["on", "off"], tv: TvArg = None) -> ActionResult:
     """Turn a TV on (Wake-on-LAN) or off (to standby). tv="all" turns every TV off (off only).
 
-    On waits up to 20 s for the TV to answer; if it doesn't, warnings says so (Wake-on-LAN must be allowed in
+    On waits up to 45 s for the TV to answer; if it doesn't, warnings says so (Wake-on-LAN must be allowed in
     the TV's settings). Already in that state: outcome "unchanged", nothing sent.
     """
     reg = registry()
@@ -256,7 +256,8 @@ async def select_source(
     """Open an app (e.g. 'netflix') or switch to an HDMI input (e.g. 'Onkyo', 'HDMI_2') on a TV.
 
     Succeeds only once that app or input is confirmed in front. A name that matches both an app and an input
-    is refused, with both listed: ask which one. The TV must be on.
+    is refused, with both listed: ask which one. The TV must be on. An app that has just opened may miss the
+    first key press while it loads: if send_key seems to do nothing right after, press it again.
     """
     c = registry().pick(tv)
     async with c.lock:

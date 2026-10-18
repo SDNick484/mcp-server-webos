@@ -361,8 +361,9 @@ says which step confirms each.
 | `W-PORT3000-CLOSE` | medium | simulator-only |
 | `W-TLS-CERT` | low | simulator-only |
 | `W-MULTI-CLIENT` | medium | simulator-only |
-| `W-INPUT-SOCKET` | medium | simulator-only |
-| `W-SUBSCRIBE` | high | simulator-only |
+| `W-INPUT-SOCKET` | medium | hardware-verified |
+| `W-SUBSCRIBE` | high | hardware-verified |
+| `W-HELLO-1008` | medium | hardware-verified |
 | `W-POWER-STATES` | high | simulator-only |
 | `W-C7-NO-POWERSTATE` | low | hardware-contradicted |
 | `W-STANDBY-SOCKET` | low | simulator-only |
@@ -370,13 +371,13 @@ says which step confirms each.
 | `W-TURNON-DEAD` | medium | simulator-only |
 | `W-WOL` | medium | simulator-only |
 | `W-WOL-PATH` | low | simulator-only |
-| `W-WAKE-TIME` | medium | simulator-only |
+| `W-WAKE-TIME` | medium | hardware-contradicted |
 | `W-MAC-SOURCE` | low | simulator-only |
 | `W-SCREEN-OFF` | medium | simulator-only |
 | `W-KEYS` | medium | simulator-only |
 | `W-MEDIA-CONTROLS` | low | simulator-only |
 | `W-NOW-PLAYING` | medium | hardware-verified |
-| `W-SOUND-OUTPUT` | medium | simulator-only |
+| `W-SOUND-OUTPUT` | medium | hardware-verified |
 | `W-VOLUME-ARC` | medium | simulator-only |
 | `W-APP-IDS` | low | simulator-only |
 | `W-SYSTEM-APP-IDS` | medium | simulator-only |

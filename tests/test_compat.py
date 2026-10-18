@@ -16,7 +16,7 @@ from aiowebostv import WebOsClient, WebOsTvPairError
 from aiowebostv import webos_client as wc
 from aiowebostv.exceptions import WebOsTvCommandError
 
-from webos_mcp.compat import CompatClient, KeyNotAccepted, PairingRefused, WrongDevice
+from webos_mcp.compat import HANDSHAKE_CLOSED, CompatClient, KeyNotAccepted, PairingRefused, WrongDevice
 from webos_mcp.sim.fake_tv import BLACKLISTED, DENIED, Faults
 
 pytestmark = pytest.mark.anyio
@@ -50,6 +50,20 @@ def test_what_we_read_from_the_library_exists():
     assert 'self.tv_info.hello = response["payload"]' in client_src  # hello lands before registration
     assert "await self.input_connection.send_str(message)" in inspect.getsource(WebOsClient.input_command)
     assert "input_ws.close()" in inspect.getsource(WebOsClient._closeout_tasks)
+
+
+async def test_a_close_before_the_hello_raises_handshake_closed(tvs):
+    # ASSUMPTION W-HELLO-1008: aiowebostv doesn't handle a close frame while waiting for the hello, so aiohttp's
+    # WSMessageTypeError (a TypeError) comes out of connect(). If a release handles it, this fails: revisit.
+    tv = await tvs("c5-webos25", faults=Faults(close_before_hello=1))
+    tv.pair_with("k" * 32)
+    client = CompatClient(tv.host, "k" * 32)
+    try:
+        with pytest.raises(HANDSHAKE_CLOSED):
+            await client.connect()
+        assert tv.events("closed-at-hello") == [("closed-at-hello",)]
+    finally:
+        await client.disconnect()
 
 
 # --- registration ------------------------------------------------------------------------
