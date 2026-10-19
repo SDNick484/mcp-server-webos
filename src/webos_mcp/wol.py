@@ -29,6 +29,12 @@ def magic_packet(mac: str) -> bytes:
     return b"\xff" * 6 + bytes.fromhex(normalized.replace(":", "")) * 16
 
 
+def shown(mac: str) -> str:
+    """A MAC as results show it: the last two octets, as doctor and the logs do. Results end up pasted into
+    chats and bug reports; the packet itself uses the whole address."""
+    return "xx:xx:xx:xx:" + ":".join(mac.split(":")[-2:])
+
+
 def targets(host: str | None, broadcast: str, port: int) -> list[tuple[str, int]]:
     out = [(broadcast, port)]
     if host and host != broadcast:
@@ -48,7 +54,7 @@ def send(macs: tuple[str, ...] | list[str], host: str | None, broadcast: str, po
             for addr in targets(host, broadcast, port):
                 try:
                     sock.sendto(packet, addr)
-                    sent.append(f"wol {mac} -> {addr[0]}:{addr[1]}")
+                    sent.append(f"wol {shown(mac)} -> {addr[0]}:{addr[1]}")
                 except OSError as exc:  # e.g. no broadcast route in this network namespace
                     failure = exc
     if not sent and failure is not None:

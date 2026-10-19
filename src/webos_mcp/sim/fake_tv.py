@@ -75,6 +75,7 @@ class Faults:
     garble_next: bool = False  # send one frame that isn't JSON, once
     prompt_then_registered: bool = False  # a known key still gets PROMPT, then "registered" at once
     reject_registration: str | None = None  # answer every registration with this error, before any dialog
+    close_before_hello: int = 0  # close this many connections with code 1008 at the hello (W-HELLO-1008)
 
 
 @dataclass
@@ -321,6 +322,12 @@ class FakeTv:
                     self.faults.garble_next = False
                     await ws.send_str("{not json")
                     continue
+                if kind == "hello" and self.faults.close_before_hello > 0:
+                    # As the Office C5 did once, probably while waking (ASSUMPTION W-HELLO-1008)
+                    self.faults.close_before_hello -= 1
+                    self.journal.append(("closed-at-hello",))
+                    await ws.close(code=1008)
+                    break
                 if kind == "hello":
                     await ws.send_json({"type": "hello", "id": uid, "payload": self._hello()})
                 elif kind == "register":

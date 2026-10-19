@@ -53,8 +53,9 @@ ASSUMPTIONS: tuple[Assumption, ...] = (
         "aiowebostv 0.9.2 switched to it (diff of handshake.py 0.9.1 -> 0.9.2); Home Assistant core issue "
         "#172703 reports it working on webOS 26 sets (G5, C2, G3) with no other change",
         "high",
-        note="High for webOS 26 (published captures). For webOS 3.5 and 6 it rests on HA shipping it to every "
-        "install in 2026.8; no C7 or G1 report seen.",
+        note="Paired on all three TVs (2026-10-16/17: the C7 on 3.9.3, the G1 on 6.5.3, the C5 on webOS 25), "
+        "registered later without a dialog, and granted everything used here. Only webOS 26 is left: the C5 "
+        "hasn't taken it yet.",
     ),
     Assumption(
         "W-SIGNED-403",
@@ -181,9 +182,10 @@ ASSUMPTIONS: tuple[Assumption, ...] = (
         "HA core issue #172703 (a G5 on webOS 26 and a C2 pressing buttons); LGTVCompanion issue #351 (401 on "
         "43.x firmware until permissions moved to the outer list, which is what aiowebostv 0.9.2 sends)",
         "medium",
-        note="2026-10-16: granted on the G1 (doctor: 'buttons allowed') and the C5 (its capture). If one refuses "
-        "it, compat.py keeps the "
-        "connection without buttons instead of failing it all.",
+        status="hardware-verified",
+        note="Granted on all three: the G1 (doctor: 'buttons allowed'), the C5 and C7 (their captures), and the C5"
+        " pressed RIGHT in Netflix (2026-10-17). If one refuses it, compat.py keeps the connection without "
+        "buttons instead of failing it all.",
     ),
     Assumption(
         "W-SUBSCRIBE",
@@ -191,8 +193,21 @@ ASSUMPTIONS: tuple[Assumption, ...] = (
         "(e.g. 401) fails the whole connection.",
         "aiowebostv 0.10.0 _get_states_and_subscribe_state_updates (only WebOsTvServiceNotFoundError is suppressed)",
         "high",
-        note="The library half is certain; that the TVs only ever answer 404 is not. 2026-10-16: the G1 answers "
-        "404 to one of them (com.webos.media/getForegroundAppInfo) and connects anyway.",
+        status="hardware-verified",
+        note="All three TVs connect with all eight subscriptions (2026-10-17). The C7 and G1 answer 404 to one of "
+        "them (com.webos.media/getForegroundAppInfo) and connect anyway; no TV answered any of them with "
+        "another error.",
+    ),
+    Assumption(
+        "W-HELLO-1008",
+        "A TV that is still starting can accept the WebSocket and close it with code 1008 before answering the "
+        "hello; the next attempt a moment later works.",
+        "the Office C5's service log, 2026-10-17 (aiohttp: 'Received message 8:1008 is not WSMsgType.TEXT')",
+        "medium",
+        status="hardware-verified",
+        note="Seen once on the C5, probably during a Wake-on-LAN (the log had no timestamps then). It reached "
+        "the supervisor as an unexpected exception and cost a 10 s wait; compat.HANDSHAKE_CLOSED now makes it an "
+        "ordinary failed attempt, retried at the wake's 1 s pace.",
     ),
     # --- power --------------------------------------------------------------------------
     Assumption(
@@ -201,8 +216,8 @@ ASSUMPTIONS: tuple[Assumption, ...] = (
         "with processing 'Screen On' while waking.",
         "lgpowercontrol's virtual TV (strings observed on an OLED42C35LA, 2026-08); aiowebostv _is_tv_on",
         "high",
-        note="All three TVs answer getPowerState (the C7 too, against W-C7-NO-POWERSTATE). Which of these "
-        "strings each one uses in each state is not checked yet (HARDWARE_VALIDATION step 5).",
+        note="Seen 2026-10-17: Active (all three), Screen Saver (C5), Screen Off (C7), Active Standby (C5, just "
+        "before it closed the connection). Suspend, Power Off and the waking 'Screen On' are not seen yet.",
     ),
     Assumption(
         "W-C7-NO-POWERSTATE",
@@ -220,6 +235,8 @@ ASSUMPTIONS: tuple[Assumption, ...] = (
         "Active Standby; without it the TV closes the connection.",
         "aiowebostv's state handling; lgpowercontrol marks deep-standby behavior as guessed",
         "low",
+        note="2026-10-17, Office C5 with Always Ready off: it reported Active Standby and then closed the "
+        "connection, as claimed for 'without it'. Not seen with Always Ready on.",
     ),
     Assumption(
         "W-OFF-GUARD",
@@ -241,7 +258,7 @@ ASSUMPTIONS: tuple[Assumption, ...] = (
         "via Wi-Fi' setting is on.",
         "Home Assistant webostv docs; lgtv-mcp; lgpowercontrol",
         "medium",
-        note="Home Assistant has no Wake-on-LAN set up for these TVs, so it is unproven on all three.",
+        note="2026-10-17: the Office C5 wakes, wired, twice out of two. The G1 and C7 are not tried yet.",
     ),
     Assumption(
         "W-WOL-PATH",
@@ -254,7 +271,11 @@ ASSUMPTIONS: tuple[Assumption, ...] = (
         "A TV is awake about 4 s after a magic packet from Active Standby, and about 5 s from deep standby.",
         "lgpowercontrol (measured on a C3)",
         "medium",
-        note="set_power waits up to 20 s before calling the result unconfirmed.",
+        status="hardware-contradicted",
+        note="2026-10-17, Office C5 (wired, Always Ready off): the picture was back about 10 s after the magic "
+        "packet, and set_power reported it awake after 17 and 18 s. Part of that gap was a server bug (a "
+        "close before the hello, W-HELLO-1008, waited 10 s instead of retrying at once). set_power now waits "
+        "45 s.",
     ),
     Assumption(
         "W-MAC-SOURCE",
@@ -271,10 +292,10 @@ ASSUMPTIONS: tuple[Assumption, ...] = (
         "undone without unplugging the TV.",
         "aiowebostv and bscpylgtv endpoints; bscpylgtv's turn_screen_off docstring for 'passive'",
         "medium",
-        note="2026-10-17, Bedroom C7 (webOS 3.9.3): the first endpoint blanked the picture with the sound on, "
-        "getPowerState read 'Screen Off', and turnOnScreen brought it back. It was expected to be absent there. "
-        "The G1 and C5 are not tried yet. A TV with neither endpoint gets a clear refusal (tests: "
-        "conftest.no_screen_off). 'passive' is never sent.",
+        note="2026-10-17: on the C7 (webOS 3.9.3) and the C5 (webOS 25) the first endpoint blanked the picture "
+        "with the sound on and turnOnScreen brought it back; on the C7 getPowerState read 'Screen Off'. It "
+        "was expected to be absent on the C7. The G1 is not tried yet. A TV with neither endpoint gets a "
+        "clear refusal (tests: conftest.no_screen_off). 'passive' is never sent.",
     ),
     # --- control ------------------------------------------------------------------------
     Assumption(
@@ -283,6 +304,9 @@ ASSUMPTIONS: tuple[Assumption, ...] = (
         "open service menus.",
         "aiowebostv buttons.py; bscpylgtv buttons.py (its comments name the service menus)",
         "medium",
+        note="2026-10-17: RIGHT moved the highlight in Netflix on the C5; the first press, right after Netflix "
+        "opened, was lost while it loaded (select_source's description now says so). The G1 and C7 are not "
+        "tried yet.",
     ),
     Assumption(
         "W-MEDIA-CONTROLS",
@@ -290,7 +314,9 @@ ASSUMPTIONS: tuple[Assumption, ...] = (
         "well as the TV's own player.",
         "none: a guess",
         "low",
-        note="If an app ignores them, send_key PLAY/PAUSE is the fallback.",
+        note="2026-10-17, Office C5: pause and play acted on Netflix, and now_playing followed (playing, paused, "
+        "playing). YouTube and the other TVs are not tried yet. If an app ignores them, send_key PLAY/PAUSE "
+        "is the fallback.",
     ),
     Assumption(
         "W-NOW-PLAYING",
@@ -309,6 +335,9 @@ ASSUMPTIONS: tuple[Assumption, ...] = (
         "tv_speaker on the TV's own speakers.",
         "aiowebostv (special-cases external_arc); lgtv-mcp's fakes",
         "medium",
+        status="hardware-verified",
+        note="Seen 2026-10-16/17: external_arc on the G1 and C5 (sound to the Onkyo receivers), tv_speaker on the "
+        "C7. With the TV off, the last known value is kept, so volume stays refused for a receiver-owned TV.",
     ),
     Assumption(
         "W-VOLUME-ARC",
@@ -343,6 +372,9 @@ ASSUMPTIONS: tuple[Assumption, ...] = (
         "switching to one brings that appId to the foreground.",
         "lgtv-mcp's fakes; Home Assistant's source handling",
         "medium",
+        note="2026-10-17, Office C5: four inputs HDMI_1..4 with the user's label on HDMI_2 ('Onkyo Home Theater', "
+        "connected), and tv/switchInput HDMI_2 brought com.webos.app.hdmi2 to the front. The G1 and C7 are "
+        "not tried yet.",
     ),
     Assumption(
         "W-SSDP",

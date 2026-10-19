@@ -26,8 +26,14 @@ public switch:
    off, everything (ASSUMPTION W-INPUT-SOCKET). ``_create_input_ws`` turns a
    permission refusal into a stand-in socket that never ends (so the main
    connection stays up) and makes button presses fail with a clear error.
+3. **A close before the hello.** A TV that is still starting can accept the
+   WebSocket and close it at once (code 1008; ASSUMPTION W-HELLO-1008).
+   ``_get_hello_info`` calls ``receive_json()`` without handling that, so
+   aiohttp raises ``WSMessageTypeError``, a TypeError rather than an
+   aiohttp.ClientError. ``HANDSHAKE_CLOSED`` names it, so callers treat it as
+   an ordinary failed attempt instead of an unexpected exception.
 
-Both are private methods. pyproject pins aiowebostv <0.11, and
+The first two are private methods. pyproject pins aiowebostv <0.11, and
 tests/test_compat.py checks the internals these rely on, so a new release
 that moves them fails CI instead of failing at a user's TV. The proper fix is
 upstream (an option to make the pointer socket optional, and the TV's error
@@ -41,9 +47,13 @@ import hashlib
 from typing import Any
 
 from aiohttp import ClientWebSocketResponse
+from aiohttp.client_exceptions import WSMessageTypeError
 from aiowebostv import WebOsClient
 from aiowebostv import webos_client as _wc
 from aiowebostv.exceptions import WebOsTvCommandError, WebOsTvPairError, WebOsTvResponseTypeError
+
+# What connect() raises when the TV closes the socket before its hello (ASSUMPTION W-HELLO-1008)
+HANDSHAKE_CLOSED: tuple[type[Exception], ...] = (WSMessageTypeError,)
 
 
 class PairingRefused(WebOsTvPairError):

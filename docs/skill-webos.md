@@ -18,7 +18,7 @@ connector name (e.g. `webos`).
 | Tool | Use it to | Confirms |
 | --- | --- | --- |
 | `get_status(tv)` | check first, every time | power (on, screen_off, standby, off), app or input in front, volume_owner, capabilities |
-| `set_power(state, tv)` | on (Wake-on-LAN) / off; `tv="all"` for off | on: that the TV answered within 20 s, else a warning |
+| `set_power(state, tv)` | on (Wake-on-LAN) / off; `tv="all"` for off | on: that the TV answered within 45 s, else a warning |
 | `select_source(source, tv)` | an app ("netflix") or an input ("Onkyo") | that it is in front |
 | `list_sources(tv)` | see what select_source accepts | an app that's installed but missing here isn't allow-listed: tell the user to run `mcp-server-webos apps` |
 | `send_key(key, repeat, tv)` | navigate (UP/DOWN/LEFT/RIGHT/ENTER/BACK/HOME) | sent only; you can't see the screen |

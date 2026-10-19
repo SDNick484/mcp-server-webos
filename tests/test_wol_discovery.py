@@ -27,7 +27,7 @@ def test_send_reaches_a_listener():
         rx.bind(("127.0.0.1", 0))
         port = rx.getsockname()[1]
         sent = wol.send(["a8:23:fe:01:02:03"], "127.0.0.1", "127.0.0.1", port)
-        assert sent == [f"wol a8:23:fe:01:02:03 -> 127.0.0.1:{port}"]
+        assert sent == [f"wol xx:xx:xx:xx:02:03 -> 127.0.0.1:{port}"]  # shown masked; the packet has it whole
         assert rx.recv(200) == wol.magic_packet("a8:23:fe:01:02:03")
 
 

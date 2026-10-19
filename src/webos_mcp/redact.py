@@ -54,7 +54,9 @@ class Formatter(logsafe.RedactingFormatter):
         return redact(text) if self.addresses else redact_secrets(text)
 
 
-def setup_logging(level: int, *, redacted: bool = True, fmt: str = "%(levelname)s %(name)s: %(message)s") -> None:
+def setup_logging(
+    level: int, *, redacted: bool = True, fmt: str = "%(asctime)s %(levelname)s %(name)s: %(message)s"
+) -> None:
     """Log to stderr (stdout belongs to the MCP stdio transport). Addresses and
     identifiers are redacted unless asked not to; secrets always are."""
     handler = logging.StreamHandler(sys.stderr)
