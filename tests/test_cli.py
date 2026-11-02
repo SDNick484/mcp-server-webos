@@ -189,9 +189,9 @@ async def test_check(home, tvs, capsys):
 async def test_call(home, tvs, capsys):
     tv = await tvs("c7")
     register(tv)
-    assert await cli._cmd_call("set_volume", ["level=7"]) == 0
+    assert await cli._cmd_call("webos_set_volume", ["level=7"]) == 0
     assert json.loads(capsys.readouterr().out)["outcome"] == "done" and tv.volume == 7
-    assert await cli._cmd_call("set_power", ["state=on", "tv=garage"]) == 1
+    assert await cli._cmd_call("webos_set_power", ["state=on", "tv=garage"]) == 1
 
 
 def test_no_subcommand_means_serve():

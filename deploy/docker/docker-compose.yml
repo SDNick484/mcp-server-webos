@@ -1,0 +1,11 @@
+services:
+  webos-mcp:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile
+    image: sdnick484/mcp-server-webos:latest
+    container_name: mcp-server-webos
+    network_mode: host
+    restart: unless-stopped
+    environment:
+      - WEBOS_HTTP_PORT=8715

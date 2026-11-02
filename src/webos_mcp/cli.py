@@ -308,7 +308,7 @@ async def _cmd_simulate(args: argparse.Namespace) -> int:
     if not args.paired:
         print(f"  mcp-server-webos pair --host {args.host} --name '{args.name}'")
     print("  mcp-server-webos doctor --no-ssdp")
-    print("  mcp-server-webos call get_status")
+    print("  mcp-server-webos call webos_get_status")
     print("Ctrl+C to stop.", flush=True)
     try:
         await asyncio.Event().wait()

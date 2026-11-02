@@ -149,7 +149,7 @@ def test_never_guess():
         pick(TVS, None)
     with pytest.raises(WebOsError, match="No TV called 'Bedroom'"):
         pick(TVS, "Bedroom")
-    with pytest.raises(WebOsError, match="only works for set_power"):
+    with pytest.raises(WebOsError, match="only works for webos_set_power"):
         pick(TVS, "all")
     with pytest.raises(WebOsError, match="No TVs are configured"):
         pick([], None)

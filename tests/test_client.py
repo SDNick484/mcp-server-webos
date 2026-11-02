@@ -242,7 +242,7 @@ async def test_sources_and_select(home, tvs, running):
     assert tv.foreground == "com.webos.app.hdmi1" and r.sent == ["ssap://tv/switchInput HDMI_1"]
     with pytest.raises(WebOsError, match="matches several sources"):
         await c.select_source("Apple TV")  # an app and an input label: never guess
-    with pytest.raises(WebOsError, match="No source called 'browser'"):
+    with pytest.raises(WebOsError, match="has no 'browser'"):
         await c.select_source("browser")
 
 

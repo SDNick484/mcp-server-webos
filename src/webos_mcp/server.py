@@ -23,13 +23,13 @@ from contextlib import asynccontextmanager
 from typing import Annotated, Literal
 
 from mcp.server import MCPServer
-from mcp.types import ToolAnnotations
 from pydantic import Field
 from typing_extensions import TypedDict
 
 from . import keystore, tvs
 from .client import MEDIA_ACTIONS, Result, Status, TvClient
 from .config import ALLOWED_KEYS, DEFAULT_APPS, LEFT_OUT_KEYS, KeyName, Settings, load_settings
+from .tools import ACT, ACT_IDEMPOTENT, READ_ONLY
 
 log = logging.getLogger(__name__)
 
@@ -81,32 +81,20 @@ async def lifespan(_server: MCPServer) -> AsyncIterator[None]:
 mcp = MCPServer(
     "webos",
     instructions=(
-        "Controls LG webOS TVs. Call get_status first: it says whether each TV is on, what is in front, and "
+        "Physical role: Display & Video Sink. Controls LG webOS TVs. Connects downstream of the AVR (Onkyo) "
+        "or switches video inputs directly; delegates master volume control to the AVR when volume_owner "
+        "is 'external'. Call webos_get_status first: it says whether each TV is on, what is in front, and "
         "(capabilities, limitations) what works on it. With several TVs, name one with `tv`; a call without it "
         "is refused rather than guessed. When a TV's sound goes to a receiver (volume_owner 'external'), volume "
-        "belongs to the receiver's own server, not to this one. A TV that is off doesn't answer: power 'off' "
-        "means off or off the network, and set_power on wakes it."
+        "belongs to the receiver's own server (onkyo_set_volume), not to this one. A TV that is off doesn't answer: "
+        "power 'off' means off or off the network, and webos_set_power on wakes it."
     ),
     lifespan=lifespan,
 )
 
 # Tool annotations are behavioral hints sent in tools/list. Clients use them to
 # decide, e.g., whether to ask the user before a call. A tool without them is
-# assumed by the spec to be destructive, non-idempotent and open-world, so
-# every tool here states its hints explicitly:
-#   read_only_hint   - changes nothing (status, sources)
-#   destructive_hint - False: nothing here deletes data or is irreversible
-#                      (turning a TV off is undone by turning it on)
-#   idempotent_hint  - calling twice with the same args == calling once
-#                      (true for power, source, volume; false for key presses
-#                      and playback: two DOWNs move twice)
-#   open_world_hint  - False: we only talk to TVs we were paired with
-# They are hints, not enforcement: the allow-lists and caps bound the model.
-_READ = ToolAnnotations(read_only_hint=True, open_world_hint=False)
-_ACT = ToolAnnotations(read_only_hint=False, destructive_hint=False, idempotent_hint=False, open_world_hint=False)
-_ACT_IDEMPOTENT = ToolAnnotations(
-    read_only_hint=False, destructive_hint=False, idempotent_hint=True, open_world_hint=False
-)
+# assumed by the spec to be destructive, non-idempotent and open-world.
 
 
 # --- what an action returns ----------------------------------------------------------------
@@ -158,15 +146,26 @@ class TvSummary(TypedDict):
 
 class Source(TypedDict, total=False):
     kind: Literal["app", "input"]
-    name: str  # what select_source accepts
+    name: str  # what webos_select_source accepts
     id: str
     title: str
     connected: bool | None
 
 
-@mcp.tool(title="List TVs", annotations=_READ)
-def list_tvs() -> list[TvSummary]:
-    """List the configured TVs: the names (and aliases) the `tv` argument accepts, model, and webOS platform version."""
+@mcp.tool(title="List TVs", annotations=READ_ONLY)
+def webos_list_tvs() -> list[TvSummary]:
+    """List the configured TVs.
+
+    <use_case>
+    Enumerate all configured TV targets, discovering accepted identifiers for the `tv` parameter,
+    hardware models, and webOS firmware versions.
+    </use_case>
+
+    <important_notes>
+    - Returns friendly names and aliases usable in the `tv` argument across all tools.
+    - Read-only; queries local configuration and current connection states without sending network commands.
+    </important_notes>
+    """
     return [
         {
             "tv": c.name,
@@ -180,15 +179,20 @@ def list_tvs() -> list[TvSummary]:
     ]
 
 
-@mcp.tool(title="Get TV status", annotations=_READ)
-async def get_status(tv: TvArg = None) -> StatusReport:
-    """Start here. For one TV (or all, when tv is omitted): power, what is in front, volume, and what works.
+@mcp.tool(title="Get TV status", annotations=READ_ONLY)
+async def webos_get_status(tv: TvArg = None) -> StatusReport:
+    """Query current TV power state, foreground app or input, and audio configuration.
 
-    power: "on", "screen_off" (sound on, picture off), "standby", or "off" (not answering: off, or off the
-    network). stale true: not reachable now, values are the last known (as_of says when; error says why).
-    input is the HDMI input's label when one is in front. now_playing is the app and play state (webOS doesn't
-    report titles). volume_owner "external": sound goes to a receiver, whose own server owns volume.
-    capabilities and limitations say what works on this TV. needs_pairing true: run `mcp-server-webos pair`.
+    <use_case>
+    Inspect TV state before issuing commands. Determine whether the TV is on, which source is active,
+    and whether audio is handled locally or routed to an AVR.
+    </use_case>
+
+    <important_notes>
+    - Start here before issuing media or input commands.
+    - When `volume_owner` is "external", volume control belongs to the AVR (`onkyo_set_volume`), not this TV.
+    - Stale status indicates the TV is in standby or powered off; wake with `webos_set_power(state="on")`.
+    </important_notes>
     """
     reg = registry()
     chosen = reg.clients if tv is None else [reg.pick(tv)]
@@ -197,12 +201,19 @@ async def get_status(tv: TvArg = None) -> StatusReport:
     return {"tvs": [c.snapshot() for c in chosen]}
 
 
-@mcp.tool(title="Turn a TV on or off", annotations=_ACT_IDEMPOTENT)
-async def set_power(state: Literal["on", "off"], tv: TvArg = None) -> ActionResult:
-    """Turn a TV on (Wake-on-LAN) or off (to standby). tv="all" turns every TV off (off only).
+@mcp.tool(title="Turn a TV on or off", annotations=ACT_IDEMPOTENT)
+async def webos_set_power(state: Literal["on", "off"], tv: TvArg = None) -> ActionResult:
+    """Turn a TV on via Wake-on-LAN or off to standby.
 
-    On waits up to 45 s for the TV to answer; if it doesn't, warnings says so (Wake-on-LAN must be allowed in
-    the TV's settings). Already in that state: outcome "unchanged", nothing sent.
+    <use_case>
+    Power on a TV for playback or turn it off to standby when finished.
+    </use_case>
+
+    <important_notes>
+    - Powering on transmits Wake-on-LAN magic packets and awaits network readiness (up to 45s).
+    - Rate limited to protect internal power relays from rapid power cycles.
+    - To power off all configured TVs simultaneously, pass `tv="all"`.
+    </important_notes>
     """
     reg = registry()
     if state == "on":
@@ -227,37 +238,62 @@ async def set_power(state: Literal["on", "off"], tv: TvArg = None) -> ActionResu
     }
 
 
-@mcp.tool(title="Turn a TV's screen on or off", annotations=_ACT_IDEMPOTENT)
-async def set_screen(state: Literal["on", "off"], tv: TvArg = None) -> ActionResult:
-    """Blank the picture while sound keeps playing ('off'), or bring it back ('on'). The TV stays on.
+@mcp.tool(title="Turn a TV's screen on or off", annotations=ACT_IDEMPOTENT)
+async def webos_set_screen(state: Literal["on", "off"], tv: TvArg = None) -> ActionResult:
+    """Blank or restore the TV display panel without interrupting audio.
 
-    Useful for music through the TV. Not every TV has it (limitations in get_status says so).
+    <use_case>
+    Turn off the OLED/LED panel during audio-only streaming or background music to save power and prevent panel burn-in.
+    </use_case>
+
+    <important_notes>
+    - Audio and running applications continue uninterrupted.
+    - Rate limited alongside power state modifications.
+    - Check TV capabilities in `webos_get_status`; older webOS revisions may lack screen-off support.
+    </important_notes>
     """
     c = registry().pick(tv)
     async with c.lock:
         return _result(c, await c.set_screen(state == "on"))
 
 
-@mcp.tool(title="List a TV's sources", annotations=_READ)
-def list_sources(tv: TvArg = None) -> list[Source]:
-    """List what select_source can switch a TV to: allow-listed apps it has installed, and its HDMI inputs.
+@mcp.tool(title="List a TV's sources", annotations=READ_ONLY)
+def webos_list_sources(tv: TvArg = None) -> list[Source]:
+    """List available apps and physical HDMI inputs on a TV.
 
-    name is what to pass to select_source. Titles and labels come from the TV (labels are the user's names
-    for each input, e.g. "Onkyo").
+    <use_case>
+    Discover valid source names and inputs to supply to `webos_select_source`.
+    </use_case>
+
+    <important_notes>
+    - Returns allow-listed installed apps and connected HDMI inputs.
+    - Use the returned `name` values as inputs for `webos_select_source`.
+    </important_notes>
     """
     return [Source(**s) for s in registry().pick(tv).sources()]  # type: ignore[typeddict-item]
 
 
-@mcp.tool(title="Switch a TV to an app or input", annotations=_ACT_IDEMPOTENT)
-async def select_source(
-    source: Annotated[str, Field(description="An app or input name from list_sources, e.g. 'netflix' or 'Onkyo'.")],
+@mcp.tool(title="Switch a TV to an app or input", annotations=ACT_IDEMPOTENT)
+async def webos_select_source(
+    source: Annotated[
+        str,
+        Field(description="An app or input name from webos_list_sources, e.g. 'netflix' or 'Onkyo'."),
+    ],
     tv: TvArg = None,
 ) -> ActionResult:
-    """Open an app (e.g. 'netflix') or switch to an HDMI input (e.g. 'Onkyo', 'HDMI_2') on a TV.
+    """Launch an application or switch to a physical HDMI input.
 
-    Succeeds only once that app or input is confirmed in front. A name that matches both an app and an input
-    is refused, with both listed: ask which one. The TV must be on. An app that has just opened may miss the
-    first key press while it loads: if send_key seems to do nothing right after, press it again.
+    <use_case>
+    Switch video display to a streaming service (e.g. Netflix, YouTube) or an
+    external HDMI input (e.g. AVR / game console).
+    </use_case>
+
+    <important_notes>
+    - TV must be powered on.
+    - Verifies the selected source is foregrounded before returning.
+    - If switching to an external device connected through an AVR, ensure the
+      AVR input is also switched (`onkyo_set_input`).
+    </important_notes>
     """
     c = registry().pick(tv)
     async with c.lock:
@@ -270,24 +306,39 @@ async def select_source(
 Repeat = Annotated[int, Field(ge=1, le=10, description="How many times to press the key (1-10).")]
 
 
-@mcp.tool(title="Press a remote key", annotations=_ACT)
-async def send_key(key: KeyName, repeat: Repeat = 1, tv: TvArg = None) -> ActionResult:
-    """Press a remote-control key on a TV, e.g. DOWN with repeat=3 to move down three rows, then ENTER.
+@mcp.tool(title="Press a remote key", annotations=ACT)
+async def webos_send_key(key: KeyName, repeat: Repeat = 1, tv: TvArg = None) -> ActionResult:
+    """Send remote control key presses to the TV.
 
-    You can't see the screen: ask the user what's on it when you're unsure where you are.
+    <use_case>
+    Navigate TV menus and on-screen dialogs (arrows, enter, back, home).
+    </use_case>
+
+    <important_notes>
+    - Rate limited via token bucket (capacity 10, rate 3.0/s) to prevent runaway key flooding.
+    - For media transport (play, pause, stop), prefer `webos_media_control`.
+    </important_notes>
     """
     c = registry().pick(tv)
     async with c.lock:
         return _result(c, await c.send_key(key, repeat))
 
 
-@mcp.tool(title="Control playback", annotations=_ACT)
-async def media_control(
+@mcp.tool(title="Control playback", annotations=ACT)
+async def webos_media_control(
     action: Literal["play", "pause", "stop", "rewind", "fast_forward"], tv: TvArg = None
 ) -> ActionResult:
-    """Play, pause, stop, rewind or fast-forward what's playing on a TV.
+    """Send media playback commands (play, pause, stop, fast forward, rewind).
 
-    Some apps ignore these; send_key PLAY or PAUSE is the fallback.
+    <use_case>
+    Control playback state of currently active media app on the TV.
+    </use_case>
+
+    <important_notes>
+    - Direct media endpoints may be ignored by certain third-party apps; use `webos_send_key`
+      with "PLAY" / "PAUSE" as fallback.
+    - Operates on foreground media applications.
+    </important_notes>
     """
     assert action in MEDIA_ACTIONS
     c = registry().pick(tv)
@@ -298,21 +349,37 @@ async def media_control(
 Level = Annotated[int, Field(ge=0, le=100, description="Volume 0-100 (capped per TV by max_volume).")]
 
 
-@mcp.tool(title="Set a TV's volume", annotations=_ACT_IDEMPOTENT)
-async def set_volume(level: Level, tv: TvArg = None) -> ActionResult:
-    """Set the volume of a TV that plays sound through its own speakers.
+@mcp.tool(title="Set a TV's volume", annotations=ACT_IDEMPOTENT)
+async def webos_set_volume(level: Level, tv: TvArg = None) -> ActionResult:
+    """Set the audio volume level on the TV.
 
-    Refused when the TV's sound goes to a receiver (volume_owner "external" in get_status): use the receiver's
-    server then. Levels above the TV's max_volume are capped, with a warning.
+    <use_case>
+    Adjust listening volume when using internal TV speakers.
+    </use_case>
+
+    <important_notes>
+    - When `volume_owner == 'external'`, calls are refused: audio is routed to an
+      AVR/soundbar and `onkyo_set_volume` must be used instead.
+    - Values above the TV's configured `max_volume` are safely clamped.
+    </important_notes>
     """
     c = registry().pick(tv)
     async with c.lock:
         return _result(c, await c.set_volume(level))
 
 
-@mcp.tool(title="Mute or unmute a TV", annotations=_ACT_IDEMPOTENT)
-async def set_mute(muted: bool, tv: TvArg = None) -> ActionResult:
-    """Mute (true) or unmute (false) a TV's own speakers. Refused when its sound goes to a receiver."""
+@mcp.tool(title="Mute or unmute a TV", annotations=ACT_IDEMPOTENT)
+async def webos_set_mute(muted: bool, tv: TvArg = None) -> ActionResult:
+    """Mute or unmute the TV audio output.
+
+    <use_case>
+    Silence or restore TV audio output.
+    </use_case>
+
+    <important_notes>
+    - When `volume_owner == 'external'`, calls are refused: use `onkyo_set_mute` on the audio receiver.
+    </important_notes>
+    """
     c = registry().pick(tv)
     async with c.lock:
         return _result(c, await c.set_mute(muted))
@@ -372,15 +439,15 @@ def apps_resource() -> str:
 # receiver's volume) belong in the home-theater Skill, not here.
 # ---------------------------------------------------------------------------
 @mcp.prompt(title="Watch something on a TV")
-def watch(app: str, tv: str = "") -> str:
+def webos_watch(app: str, tv: str = "") -> str:
     """Turn a TV on and open an app on it."""
     which = f" on the {tv} TV" if tv else ""
     arg = f", tv={tv!r}" if tv else ""
     return (
         f"Open {app}{which}. Please:\n"
-        f"1. Call get_status{f' with tv={tv!r}' if tv else ''}. If it asks which TV, ask me.\n"
-        f'2. If power is "off" or "standby", call set_power with state="on"{arg}.\n'
-        f"3. Call select_source with source={app!r}{arg}. If it says the name is unknown or matches several, "
-        "call list_sources and ask me which one I meant.\n"
+        f"1. Call webos_get_status{f' with tv={tv!r}' if tv else ''}. If it asks which TV, ask me.\n"
+        f'2. If power is "off" or "standby", call webos_set_power with state="on"{arg}.\n'
+        f"3. Call webos_select_source with source={app!r}{arg}. If it says the name is unknown or matches several, "
+        "call webos_list_sources and ask me which one I meant.\n"
         "4. Tell me it's open. Don't change the volume: if volume_owner is 'external', the receiver owns it."
     )

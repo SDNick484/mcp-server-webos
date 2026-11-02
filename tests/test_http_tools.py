@@ -71,12 +71,12 @@ async def test_tools_work_over_http_with_a_valid_assertion(home, tvs):
     register(tv)
     async with serving() as url, client(url, token()) as c:
         for _ in range(200):  # the server connects to the TV in the background
-            status = (await c.call_tool("get_status", {})).structured_content["tvs"][0]
+            status = (await c.call_tool("webos_get_status", {})).structured_content["tvs"][0]
             if status["reachable"]:
                 break
             await anyio.sleep(0.05)
         assert (status["tv"], status["power"]) == ("Bedroom", "on")
-        result = (await c.call_tool("select_source", {"source": "netflix"})).structured_content
+        result = (await c.call_tool("webos_select_source", {"source": "netflix"})).structured_content
         assert result["outcome"] == "done"
     assert tv.foreground == "netflix"
 
@@ -101,7 +101,7 @@ async def test_bad_assertions_never_reach_the_tv(home, tvs, assertion):
             "jsonrpc": "2.0",
             "id": 1,
             "method": "tools/call",
-            "params": {"name": "set_power", "arguments": {"state": "off"}},
+            "params": {"name": "webos_set_power", "arguments": {"state": "off"}},
         }
         resp = await http.post(url, json=body, headers=headers)
         assert (resp.status_code, resp.json()) == (403, {"error": "forbidden"})
