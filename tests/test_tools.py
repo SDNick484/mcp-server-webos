@@ -85,7 +85,8 @@ async def test_every_tool_has_title_description_and_annotations(two_tvs):
 async def test_annotations_match_behavior(two_tvs):
     c, *_ = two_tvs
     t = await tools(c)
-    assert {n for n, x in t.items() if x.annotations.read_only_hint} == {"webos_list_tvs", "webos_get_status", "webos_list_sources"}
+    expected_read_only = {"webos_list_tvs", "webos_get_status", "webos_list_sources"}
+    assert {n for n, x in t.items() if x.annotations.read_only_hint} == expected_read_only
     assert t["webos_send_key"].annotations.idempotent_hint is False  # DOWN twice moves twice
     assert t["webos_media_control"].annotations.idempotent_hint is False
     assert t["webos_set_power"].annotations.idempotent_hint is True

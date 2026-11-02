@@ -23,14 +23,13 @@ from contextlib import asynccontextmanager
 from typing import Annotated, Literal
 
 from mcp.server import MCPServer
-from mcp.types import ToolAnnotations
 from pydantic import Field
 from typing_extensions import TypedDict
 
 from . import keystore, tvs
 from .client import MEDIA_ACTIONS, Result, Status, TvClient
 from .config import ALLOWED_KEYS, DEFAULT_APPS, LEFT_OUT_KEYS, KeyName, Settings, load_settings
-from .tools import ACT, ACT_IDEMPOTENT, DESTRUCTIVE, OPEN_WORLD_READ, READ_ONLY
+from .tools import ACT, ACT_IDEMPOTENT, READ_ONLY
 
 log = logging.getLogger(__name__)
 
@@ -83,8 +82,8 @@ mcp = MCPServer(
     "webos",
     instructions=(
         "Physical role: Display & Video Sink. Controls LG webOS TVs. Connects downstream of the AVR (Onkyo) "
-        "or switches video inputs directly; delegates master volume control to the AVR when volume_owner is 'external'. "
-        "Call webos_get_status first: it says whether each TV is on, what is in front, and "
+        "or switches video inputs directly; delegates master volume control to the AVR when volume_owner "
+        "is 'external'. Call webos_get_status first: it says whether each TV is on, what is in front, and "
         "(capabilities, limitations) what works on it. With several TVs, name one with `tv`; a call without it "
         "is refused rather than guessed. When a TV's sound goes to a receiver (volume_owner 'external'), volume "
         "belongs to the receiver's own server (onkyo_set_volume), not to this one. A TV that is off doesn't answer: "
@@ -158,7 +157,8 @@ def webos_list_tvs() -> list[TvSummary]:
     """List the configured TVs.
 
     <use_case>
-    Enumerate all configured TV targets, discovering accepted identifiers for the `tv` parameter, hardware models, and webOS firmware versions.
+    Enumerate all configured TV targets, discovering accepted identifiers for the `tv` parameter,
+    hardware models, and webOS firmware versions.
     </use_case>
 
     <important_notes>
@@ -184,7 +184,8 @@ async def webos_get_status(tv: TvArg = None) -> StatusReport:
     """Query current TV power state, foreground app or input, and audio configuration.
 
     <use_case>
-    Inspect TV state before issuing commands. Determine whether the TV is on, which source is active, and whether audio is handled locally or routed to an AVR.
+    Inspect TV state before issuing commands. Determine whether the TV is on, which source is active,
+    and whether audio is handled locally or routed to an AVR.
     </use_case>
 
     <important_notes>
@@ -274,19 +275,24 @@ def webos_list_sources(tv: TvArg = None) -> list[Source]:
 
 @mcp.tool(title="Switch a TV to an app or input", annotations=ACT_IDEMPOTENT)
 async def webos_select_source(
-    source: Annotated[str, Field(description="An app or input name from webos_list_sources, e.g. 'netflix' or 'Onkyo'.")],
+    source: Annotated[
+        str,
+        Field(description="An app or input name from webos_list_sources, e.g. 'netflix' or 'Onkyo'."),
+    ],
     tv: TvArg = None,
 ) -> ActionResult:
     """Launch an application or switch to a physical HDMI input.
 
     <use_case>
-    Switch video display to a streaming service (e.g. Netflix, YouTube) or an external HDMI input (e.g. AVR / game console).
+    Switch video display to a streaming service (e.g. Netflix, YouTube) or an
+    external HDMI input (e.g. AVR / game console).
     </use_case>
 
     <important_notes>
     - TV must be powered on.
     - Verifies the selected source is foregrounded before returning.
-    - If switching to an external device connected through an AVR, ensure the AVR input is also switched (`onkyo_set_input`).
+    - If switching to an external device connected through an AVR, ensure the
+      AVR input is also switched (`onkyo_set_input`).
     </important_notes>
     """
     c = registry().pick(tv)
@@ -329,7 +335,8 @@ async def webos_media_control(
     </use_case>
 
     <important_notes>
-    - Direct media endpoints may be ignored by certain third-party apps; use `webos_send_key` with "PLAY" / "PAUSE" as fallback.
+    - Direct media endpoints may be ignored by certain third-party apps; use `webos_send_key`
+      with "PLAY" / "PAUSE" as fallback.
     - Operates on foreground media applications.
     </important_notes>
     """
@@ -351,7 +358,8 @@ async def webos_set_volume(level: Level, tv: TvArg = None) -> ActionResult:
     </use_case>
 
     <important_notes>
-    - When `volume_owner == 'external'`, calls are refused: audio is routed to an AVR/soundbar and `onkyo_set_volume` must be used instead.
+    - When `volume_owner == 'external'`, calls are refused: audio is routed to an
+      AVR/soundbar and `onkyo_set_volume` must be used instead.
     - Values above the TV's configured `max_volume` are safely clamped.
     </important_notes>
     """

@@ -743,10 +743,7 @@ class TvClient:
         if not matches:
             candidates = [s["name"] for s in self.sources()]
             msg = unknown_with_suggestions(
-                f"Sources on {self.name}",
-                clean(ref),
-                candidates,
-                fallback=f"Sources: {listing}."
+                f"Sources on {self.name}", clean(ref), candidates, fallback=f"Sources: {listing}."
             )
             raise WebOsError(msg)
         both = ", ".join(f"{k} {i}" for k, i in matches)
