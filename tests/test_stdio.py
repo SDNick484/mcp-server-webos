@@ -28,4 +28,4 @@ async def test_serve_over_stdio(tmp_path):
     params = StdioServerParameters(command=exe, args=[], env=env)
     async with Client(params) as c:
         assert {t.name for t in (await c.list_tools()).tools} == EXPECTED
-        assert (await c.call_tool("get_status", {})).structured_content == {"tvs": []}
+        assert (await c.call_tool("webos_get_status", {})).structured_content == {"tvs": []}

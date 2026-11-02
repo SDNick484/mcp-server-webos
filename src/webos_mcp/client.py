@@ -57,6 +57,8 @@ from . import config, discovery, keystore, probe, wol
 from .compat import HANDSHAKE_CLOSED, CompatClient, KeyNotAccepted, PairingRefused, WrongDevice
 from .config import Settings, TvSettings, name_key
 from .errors import Unreachable, WebOsError
+from .lookup import unknown_with_suggestions
+from .ratelimit import TokenBucket, refusal
 from .tasks import stop_task
 
 log = logging.getLogger(__name__)
@@ -214,6 +216,8 @@ class TvClient:
         self._task: asyncio.Task[None] | None = None
         self._pending: CompatClient | None = None
         self._stamp = keystore.stamp()
+        self._power_bucket = TokenBucket(capacity=2.0, rate=1.0 / 20.0)
+        self._key_bucket = TokenBucket(capacity=10.0, rate=3.0)
 
     # --- lifecycle -------------------------------------------------------------------
     @property
@@ -608,6 +612,10 @@ class TvClient:
     async def power_on(self) -> Result:
         if self.reachable and self.power() in ("on", "screen_off"):
             return Result(f"{self.name} is already on", [], "unchanged")
+        wait = self._power_bucket.take(1.0)
+        if wait > 0:
+            raise WebOsError(refusal(f"turn {self.name} on", wait, self.name))
+            return Result(f"{self.name} is already on", [], "unchanged")
         if not self.tv.macs:
             raise WebOsError(
                 f"No MAC address saved for {self.name}, so it can't be woken (Wake-on-LAN). Re-run pair while "
@@ -650,6 +658,9 @@ class TvClient:
             )
         if self.power() == "standby":
             return Result(f"{self.name} is already off (standby)", [], "unchanged")
+        wait = self._power_bucket.take(1.0)
+        if wait > 0:
+            raise WebOsError(refusal(f"turn {self.name} off", wait, self.name))
         sent = [f"ssap://{ep.POWER_OFF}"]
         if self.settings.dry_run:
             return Result(f"turn {self.name} off", sent, "dry_run")
@@ -665,6 +676,9 @@ class TvClient:
             raise WebOsError(f"{self.name} has no screen-off command (some older webOS sets lack it).")
         if self.cache.power and self.power() == ("on" if on else "screen_off"):
             return Result(f"{self.name}'s screen is already {'on' if on else 'off'}", [], "unchanged")
+        wait = self._power_bucket.take(1.0)
+        if wait > 0:
+            raise WebOsError(refusal(f"turn {self.name}'s screen {'on' if on else 'off'}", wait, self.name))
         uris = SCREEN_ON_URIS if on else SCREEN_OFF_URIS
         if self.settings.dry_run:
             return Result(f"turn {self.name}'s screen {'on' if on else 'off'}", [f"ssap://{uris[0]}"], "dry_run")
@@ -727,7 +741,14 @@ class TvClient:
             return next(iter(matches.values()))
         listing = ", ".join(f"{s['name']} ({s['kind']})" for s in self.sources())
         if not matches:
-            raise WebOsError(f"No source called {clean(ref)!r} on {self.name}. Sources: {listing}.")
+            candidates = [s["name"] for s in self.sources()]
+            msg = unknown_with_suggestions(
+                f"Sources on {self.name}",
+                clean(ref),
+                candidates,
+                fallback=f"Sources: {listing}."
+            )
+            raise WebOsError(msg)
         both = ", ".join(f"{k} {i}" for k, i in matches)
         raise WebOsError(f"{clean(ref)!r} matches several sources on {self.name} ({both}). Say which one.")
 
@@ -750,6 +771,9 @@ class TvClient:
         raise WebOsError(f"Sent the switch to {label}, but {self.name} still shows {showing}.")
 
     async def send_key(self, key: str, repeat: int) -> Result:
+        wait = self._key_bucket.take(float(repeat))
+        if wait > 0:
+            raise WebOsError(refusal(f"press {key} x{repeat} on {self.name}", wait, self.name))
         client = self._require_awake()
         if client.buttons_denied:
             raise WebOsError(f"{self.name} refused the button socket, so keys don't work. media_control still does.")

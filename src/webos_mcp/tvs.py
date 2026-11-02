@@ -43,7 +43,7 @@ def pick(items: Sequence[T], ref: str | None) -> T:
             return items[0]
         raise WebOsError(f"Which TV? Several are configured: {names(items)}. Pass tv=<name>.")
     if ref.strip().lower() == ALL:
-        raise WebOsError("tv='all' only works for set_power with state='off'. Name one TV.")
+        raise WebOsError("tv='all' only works for webos_set_power with state='off'. Name one TV.")
     matches = [i for i in items if i.tv.answers_to(ref)]
     if len(matches) == 1:
         return matches[0]

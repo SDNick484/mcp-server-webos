@@ -35,10 +35,11 @@ from aiowebostv import endpoints as ep
 from aiowebostv.exceptions import WebOsTvCommandError, WebOsTvPairError
 
 from . import keystore, probe, wol
-from .assumptions import unverified
+from .assumptions import ASSUMPTIONS, unverified
 from .compat import CompatClient, KeyNotAccepted, PairingRefused, WrongDevice
 from .config import Settings, TvSettings, config_dir
 from .redact import redact
+from .registry import doctor_summary
 
 # HARDWARE_VALIDATION.md step that covers each layer, for the hints.
 STEP = {"config": 3, "tcp": 4, "hello": 4, "session": 3, "wol": 6, "ssdp": 11}
@@ -314,7 +315,7 @@ def render(report: Report, redacted: bool = True) -> str:
 
 
 def to_json(report: Report, redacted: bool = True) -> str:
-    data: dict[str, Any] = {**asdict(report), "ok": report.ok}
+    data: dict[str, Any] = {**asdict(report), "ok": report.ok, "assumptions": doctor_summary(ASSUMPTIONS)}
     for tv, raw in zip(report.tvs, data["tvs"], strict=True):
         raw["ok"] = tv.ok
     text = json.dumps(data, indent=2)
