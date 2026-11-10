@@ -1,7 +1,7 @@
 # mcp-server-webos
 
 An [MCP](https://modelcontextprotocol.io) server for LG webOS TVs: status, power, screen, apps and
-inputs, remote keys, playback and volume, from Claude Code, Claude Desktop or the mobile app. It
+inputs, remote keys, typing into search boxes, YouTube search, playback and volume, from Claude Code, Claude Desktop or the mobile app. It
 talks to each TV directly over LG's SSAP WebSocket protocol, through
 [aiowebostv](https://github.com/home-assistant-libs/aiowebostv) (the library Home Assistant uses),
 with no dependency on Home Assistant.
@@ -138,7 +138,7 @@ claude mcp add webos -- /path/to/.venv/bin/mcp-server-webos            # Claude 
 
 ### Tools
 
-Ten, on purpose: every tool definition costs context in every client.
+Fourteen, on purpose: every tool definition costs context in every client.
 
 | Tool | Does | Annotations |
 | --- | --- | --- |
@@ -152,6 +152,45 @@ Ten, on purpose: every tool definition costs context in every client.
 | `media_control` | play, pause, stop, rewind, fast-forward | not idempotent |
 | `set_volume` | 0-100, capped; refused when the receiver owns volume | idempotent |
 | `set_mute` | mute or unmute; same rule | idempotent |
+| `insert_text` | type into the focused *system* text field (LG's search); `replace` to overwrite it | not idempotent |
+| `delete_text` | delete characters before the cursor in that field | not idempotent |
+| `submit_text` | press the keyboard's Enter in that field (runs the search) | not idempotent |
+| `search_app` | open YouTube straight on its results for a query | idempotent |
+
+### Typing and searching
+
+Typing a search with `send_key` means walking an on-screen keyboard one arrow at a time. Where
+`get_status` lists `text_input`, `insert_text` types the whole string through the TV's input
+method (IME) service instead:
+
+```
+get_status(tv="Office")                       # capabilities include text_input
+send_key(key="HOME") ... open LG's search     # the search box has the cursor
+insert_text(text="lofi beats", tv="Office")   # typed, and confirmed by the field's new length
+submit_text(tv="Office")                      # the results
+```
+
+What was seen on the three TVs (2026-11-09; details in HARDWARE_VALIDATION.md step 14):
+
+| | Bedroom C7 (3.9.3) | Family Room G1 (6.5.3) | Office C5 (10.3.1) |
+| --- | --- | --- | --- |
+| Typing into LG's search | works, unconfirmed | works, confirmed | works, confirmed |
+| Typing into YouTube's or Netflix's search | refused | refused | refused |
+| `search_app` (YouTube) | refused | works | works |
+
+- **Only system text fields take typed text.** YouTube and Netflix draw their own keyboards, and
+  the TV answers "ok" to every IME call there (and with nothing focused at all) while typing
+  nothing. So each text tool first asks the TV whether a system text field has focus (W-IME-FOCUS)
+  and refuses, sending nothing, when none does. The refusal points at `search_app` or `send_key`.
+- **Confirmed where the TV says.** The G1 and C5 report the field's length after every change, so
+  the result says whether the text landed; the C7 doesn't, so its results carry an "unconfirmed"
+  warning (W-IME-LENGTH).
+- **YouTube search by link, not by typing.** `search_app` launches YouTube with
+  `contentTarget=https://www.youtube.com/tv?q=<query>`, the only link shape that showed results
+  (W-YOUTUBE-SEARCH). The server builds the link; the model only gives the query. webOS 3.x's
+  YouTube ignores links, so it is refused on the C7; webOS 4 and 5 are untested and allowed.
+- Text is one line of printable characters, at most 200 (a query, 100); no newlines (use
+  `submit_text`). Typing shares `send_key`'s rate limit.
 
 Nothing is `destructiveHint`: turning a TV off is undone by turning it on. Every action returns an
 `ActionResult`, the siblings' shape:
@@ -172,7 +211,9 @@ left out with the reason for each), `webos://apps` (the app allow-list). One pro
 
 - **No raw SSAP or luna calls.** The same reasoning as no `adb shell` on the Shield: one generic
   call would reach everything the TV exposes, including its internal settings services.
-- **No URL or text tools:** no browser, no "play this URL", no typing.
+- **No URL tools, and text only where decided:** no browser, no "play this URL". The two free-text
+  arguments are `insert_text`'s text, which only reaches a focused system text field, and
+  `search_app`'s query, which the server puts into a link it builds for an allow-listed app.
 - **Keys are an allow-list.** `POWER` (a toggle), the `IN_START`/`EZ_ADJUST` service menus,
   settings menus, the volume keys (they would bypass the cap) and app shortcuts (they would
   bypass the app allow-list) are left out; `webos://keys` lists why.
@@ -383,6 +424,10 @@ says which step confirms each.
 | `W-SYSTEM-APP-IDS` | medium | simulator-only |
 | `W-INPUT-IDS` | medium | simulator-only |
 | `W-SSDP` | medium | hardware-verified |
+| `W-IME-FOCUS` | high | hardware-verified |
+| `W-IME-TEXT` | high | hardware-verified |
+| `W-IME-LENGTH` | medium | hardware-verified |
+| `W-YOUTUBE-SEARCH` | medium | hardware-verified |
 
 ## License
 

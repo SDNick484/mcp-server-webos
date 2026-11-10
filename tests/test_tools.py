@@ -13,7 +13,7 @@ import pytest
 from mcp import Client
 
 from webos_mcp import server
-from webos_mcp.client import TvClient
+from webos_mcp.client import MAX_QUERY, MAX_TEXT, SEARCH_LINKS, TvClient
 from webos_mcp.config import ALLOWED_KEYS
 
 from .conftest import fast, register, wait_until
@@ -62,6 +62,10 @@ EXPECTED = {
     "webos_media_control",
     "webos_set_volume",
     "webos_set_mute",
+    "webos_insert_text",
+    "webos_delete_text",
+    "webos_submit_text",
+    "webos_search_app",
 }
 
 
@@ -90,6 +94,9 @@ async def test_annotations_match_behavior(two_tvs):
     assert t["webos_send_key"].annotations.idempotent_hint is False  # DOWN twice moves twice
     assert t["webos_media_control"].annotations.idempotent_hint is False
     assert t["webos_set_power"].annotations.idempotent_hint is True
+    for name in ("webos_insert_text", "webos_delete_text", "webos_submit_text"):
+        assert t[name].annotations.idempotent_hint is False, name  # typing twice types twice
+    assert t["webos_search_app"].annotations.idempotent_hint is True
 
 
 async def test_every_tool_takes_tv_except_list_tvs(two_tvs):
@@ -106,13 +113,28 @@ async def test_key_enum_is_the_allow_list(two_tvs):
     assert set(enum) == ALLOWED_KEYS and "POWER" not in enum and "IN_START" not in enum
 
 
-async def test_no_url_or_text_arguments(two_tvs):
-    # Decided: no URL tools, no arbitrary-text tools. The only free strings are names to resolve.
+# The only free strings: names to resolve, and two bounded kinds of text (decided 2026-11-09):
+# what to type into a focused system field, and a query whose link the server builds.
+FREE_TEXT = {("webos_insert_text", "text"): MAX_TEXT, ("webos_search_app", "query"): MAX_QUERY}
+
+
+async def test_no_url_arguments_and_text_only_where_decided(two_tvs):
     c, *_ = two_tvs
     for name, t in (await tools(c)).items():
         for arg, prop in t.input_schema["properties"].items():
-            if arg not in ("tv", "source"):
-                assert "string" not in json.dumps(prop) or "enum" in json.dumps(prop) or "$ref" in prop, (name, arg)
+            if (name, arg) in FREE_TEXT:
+                assert prop["maxLength"] == FREE_TEXT[name, arg] and prop["minLength"] == 1, (name, arg)
+            elif arg not in ("tv", "source"):
+                closed = any(k in json.dumps(prop) for k in ('"enum"', '"const"')) or "$ref" in prop
+                assert "string" not in json.dumps(prop) or closed, (name, arg)
+        assert "url" not in json.dumps(t.input_schema["properties"]).lower(), name
+
+
+async def test_search_app_enum_is_the_link_table(two_tvs):
+    c, *_ = two_tvs
+    schema = (await tools(c))["webos_search_app"].input_schema
+    app = schema["properties"]["app"]
+    assert set(app.get("enum") or [app["const"]]) == set(SEARCH_LINKS)  # one value is a "const"
 
 
 # --- never guess ------------------------------------------------------------------
@@ -267,3 +289,120 @@ async def test_source_fuzzy_suggestions(two_tvs):
     result = await c.call_tool("webos_select_source", {"source": "netfli", "tv": "g1"})
     assert result.is_error
     assert "Closest matches: 'netflix'" in text(result)
+
+
+# --- text input and app search ------------------------------------------------------------
+IME = "com.webos.service.ime/"
+
+
+def ime_requests(tv) -> list[str]:
+    return [r for r in tv.requests if r.startswith(IME) and not r.endswith("registerRemoteKeyboard")]
+
+
+async def test_typing_into_lgs_search(two_tvs):
+    # ASSUMPTION W-IME-TEXT, W-IME-LENGTH: the G1 confirms each step by the field's length
+    c, g1, _ = two_tvs
+    await g1.focus_field()
+    r = ok(await c.call_tool("webos_insert_text", {"text": "hello", "tv": "g1"}))
+    assert (r["outcome"], r["warnings"]) == ("done", []) and g1.text_field == "hello"
+    assert r["sent"] == ["ssap://com.webos.service.ime/insertText 'hello'"]
+    ok(await c.call_tool("webos_delete_text", {"count": 2, "tv": "g1"}))
+    ok(await c.call_tool("webos_insert_text", {"text": " world", "tv": "g1"}))
+    assert g1.text_field == "hel world"
+    r = ok(await c.call_tool("webos_insert_text", {"text": "lofi beats", "replace": True, "tv": "g1"}))
+    assert r["warnings"] == [] and g1.text_field == "lofi beats"
+    r = ok(await c.call_tool("webos_submit_text", {"tv": "g1"}))
+    assert r["warnings"] == [] and g1.submitted == ["lofi beats"]
+    # The subscription is only held for the call (ASSUMPTION W-IME-FOCUS)
+    assert not [s for s in g1._subs if s.uri.endswith("registerRemoteKeyboard")]
+
+
+async def test_no_focused_field_is_refused_and_nothing_is_typed(two_tvs):
+    # In YouTube or Netflix the TV would answer true and type nothing (ASSUMPTION W-IME-FOCUS)
+    c, g1, _ = two_tvs
+    for tool, args in (("webos_insert_text", {"text": "hi"}), ("webos_delete_text", {}), ("webos_submit_text", {})):
+        result = await c.call_tool(tool, {**args, "tv": "g1"})
+        assert result.is_error and "No text field has focus on Family Room" in text(result), tool
+        assert "webos_search_app" in text(result)
+    assert ime_requests(g1) == []
+
+
+async def test_a_tv_that_doesnt_report_lengths_warns(two_tvs):
+    # The C7 says a field has focus but not what it holds (ASSUMPTION W-IME-LENGTH)
+    c, _, c7 = two_tvs
+    result = await c.call_tool("webos_insert_text", {"text": "hi", "tv": "c7"})
+    assert result.is_error and "No text field has focus on Bedroom" in text(result)  # no currentWidget at all
+    await c7.focus_field()
+    r = ok(await c.call_tool("webos_insert_text", {"text": "hi", "tv": "c7"}))
+    assert c7.text_field == "hi" and r["warnings"][0].startswith("unconfirmed: this TV doesn't report")
+    status = ok(await c.call_tool("webos_get_status", {"tv": "c7"}))["tvs"][0]
+    assert "text_input" in status["capabilities"]
+    assert any("sent unconfirmed" in lim for lim in status["limitations"])
+
+
+async def test_text_is_bounded_and_printable(two_tvs):
+    c, g1, _ = two_tvs
+    await g1.focus_field()
+    for bad in ("", "x" * (MAX_TEXT + 1)):  # the schema refuses these before our code runs
+        assert (await c.call_tool("webos_insert_text", {"text": bad, "tv": "g1"})).is_error
+    result = await c.call_tool("webos_insert_text", {"text": "two\nlines", "tv": "g1"})
+    assert result.is_error and "use webos_submit_text" in text(result)
+    assert (await c.call_tool("webos_insert_text", {"text": "   ", "tv": "g1"})).is_error
+    assert (await c.call_tool("webos_delete_text", {"count": 0, "tv": "g1"})).is_error
+    assert ime_requests(g1) == [] and g1.text_field == ""
+
+
+async def test_delete_in_an_empty_field_sends_nothing(two_tvs):
+    c, g1, _ = two_tvs
+    await g1.focus_field()
+    r = ok(await c.call_tool("webos_delete_text", {"count": 3, "tv": "g1"}))
+    assert (r["outcome"], r["sent"]) == ("unchanged", []) and ime_requests(g1) == []
+
+
+async def test_text_tools_dry_run(home, tvs, fast_clients, monkeypatch):
+    monkeypatch.setenv("WEBOS_DRY_RUN", "1")
+    g1 = await tvs("g1")
+    register(g1)
+    await g1.focus_field()
+    async with Client(server.mcp) as c:
+        await wait_until(lambda: server.registry().clients[0].reachable)
+        r = ok(await c.call_tool("webos_insert_text", {"text": "lofi"}))
+        assert r["outcome"] == "dry_run" and r["detail"] == "DRY RUN, nothing sent: would type 'lofi' on Family Room"
+        assert r["warnings"] == ["not checked in a dry run: whether a text field has focus"]
+        for tool in ("webos_delete_text", "webos_submit_text"):
+            assert ok(await c.call_tool(tool, {}))["outcome"] == "dry_run"
+        r = ok(await c.call_tool("webos_search_app", {"app": "youtube", "query": "lofi"}))
+        assert r["outcome"] == "dry_run" and r["sent"][0].endswith("contentTarget=https://www.youtube.com/tv?q=lofi")
+    assert not [r for r in g1.requests if r.startswith(IME)] and g1.text_field == "" and g1.searches == []
+
+
+async def test_search_app(two_tvs):
+    # ASSUMPTION W-YOUTUBE-SEARCH: the server builds the link; the query is URL-encoded into it
+    c, g1, c7 = two_tvs
+    r = ok(await c.call_tool("webos_search_app", {"app": "youtube", "query": "lofi beats & rain", "tv": "g1"}))
+    target = "https://www.youtube.com/tv?q=lofi%20beats%20%26%20rain"
+    assert r["outcome"] == "done" and g1.searches == [target] and g1.foreground == "youtube.leanback.v4"
+    assert r["sent"] == [f"ssap://system.launcher/launch youtube.leanback.v4 contentTarget={target}"]
+    status = ok(await c.call_tool("webos_get_status", {"tv": "g1"}))["tvs"][0]
+    assert {"app_search", "text_input"} <= set(status["capabilities"])
+    # The C7 would just open YouTube's home: refused, and nothing sent
+    result = await c.call_tool("webos_search_app", {"app": "youtube", "query": "lofi", "tv": "c7"})
+    assert result.is_error and "ignores search links" in text(result)
+    assert "system.launcher/launch" not in c7.requests
+    status = ok(await c.call_tool("webos_get_status", {"tv": "c7"}))["tvs"][0]
+    assert "app_search" not in status["capabilities"]
+    assert any(lim.startswith("app_search: YouTube on webOS 3.9.3") for lim in status["limitations"])
+    result = await c.call_tool("webos_search_app", {"app": "netflix", "query": "x", "tv": "g1"})
+    assert result.is_error  # not in the enum
+
+
+async def test_search_needs_the_app_installed(two_tvs):
+    c, g1, _ = two_tvs
+    client = server.registry().pick("g1")
+    client.cache.apps.pop("youtube.leanback.v4")
+    result = await c.call_tool("webos_search_app", {"app": "youtube", "query": "lofi", "tv": "g1"})
+    assert result.is_error and "isn't installed on Family Room" in text(result)
+    status = ok(await c.call_tool("webos_get_status", {"tv": "g1"}))["tvs"][0]
+    assert "app_search" not in status["capabilities"] and not any(
+        x.startswith("app_search") for x in status["limitations"]
+    )

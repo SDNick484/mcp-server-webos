@@ -347,3 +347,139 @@ async def test_stop_is_bounded(home, tvs, running):
 def test_clean_strings_from_the_tv():
     assert clean("Net\x00flix‮  Plus\n") == "Netflix Plus"
     assert len(clean("x" * 500)) == 64
+
+
+# --- text input, against a stand-in SSAP client ----------------------------------------------
+# The simulator tests in test_tools.py drive the real aiowebostv over a socket. These replace the
+# connection with a stub, to pin down how TvClient reads registerRemoteKeyboard's replies
+# (ASSUMPTION W-IME-FOCUS), including shapes the simulator doesn't produce.
+class StubSsap:
+    """Stands in for CompatClient: canned keyboard pushes, and a record of what was sent."""
+
+    buttons_denied = False
+    connection = object()
+
+    def __init__(self, first: dict, after: list[dict] | None = None, missing: bool = False) -> None:
+        self.first, self.after, self.missing = first, after or [], missing
+        self.sent: list[tuple[str, dict | None]] = []
+        self.unsubscribed: list[str] = []
+        self._push = None
+
+    def is_connected(self) -> bool:
+        return True
+
+    async def subscribe(self, callback, uri):
+        from aiowebostv.exceptions import WebOsTvServiceNotFoundError
+
+        if self.missing:
+            raise WebOsTvServiceNotFoundError("404 no such service or method")
+        self._push = callback
+        await callback(self.first)  # aiowebostv runs the callback on the first reply before returning it
+        return self.first
+
+    async def unsubscribe(self, uri):
+        self.unsubscribed.append(uri)
+
+    async def request(self, uri, payload=None):
+        self.sent.append((uri, payload))
+        for p in self.after:  # what the TV pushes back after the change
+            await self._push(p)
+        return {"returnValue": True}
+
+
+def stub_client(stub: StubSsap, platform: str = "6.5.3", dry_run: bool = False) -> TvClient:
+    from webos_mcp.config import DEFAULT_APPS, Settings, TvSettings
+
+    settings = Settings(tvs=(), apps=dict(DEFAULT_APPS), dry_run=dry_run)
+    c = fast(TvClient(TvSettings("Den", "192.168.1.9", uuid="u", platform=platform), settings))
+    c.ime_wait = 0.2
+    c.client, c.reachable = stub, True  # type: ignore[assignment]
+    c.cache.power = {"state": "Active"}
+    c.cache.app_id = "youtube.leanback.v4"
+    c.cache.apps = {"youtube.leanback.v4": {"id": "youtube.leanback.v4", "title": "YouTube"}}
+    return c
+
+
+FOCUSED = {"currentWidget": {"focus": True, "cursorPosition": 0, "surroundingTextLength": 0}, "subscribed": True}
+
+
+@pytest.mark.parametrize(
+    "first",
+    [
+        {"subscribed": True},  # no currentWidget: the G1 in YouTube, the C7 and C5 on HDMI
+        {"currentWidget": {"focus": False}, "subscribed": True},  # Netflix, YouTube on the C7 and C5
+        {"currentWidget": {"contentType": "text"}, "subscribed": True},  # no focus key: not focused
+    ],
+)
+async def test_stub_no_focus_means_refused_and_nothing_sent(first):
+    stub = StubSsap(first)
+    c = stub_client(stub)
+    with pytest.raises(WebOsError, match="No text field has focus on Den \\(YouTube is in front\\)"):
+        await c.insert_text("hello", replace=False)
+    assert stub.sent == [] and stub.unsubscribed == ["com.webos.service.ime/registerRemoteKeyboard"]
+
+
+async def test_stub_confirms_by_length():
+    pushed = {"currentWidget": {"focus": True, "surroundingTextLength": 5}, "focusChanged": True}
+    stub = StubSsap(FOCUSED, after=[pushed])
+    r = await stub_client(stub).insert_text("hello", replace=False)
+    assert (r.outcome, r.warnings) == ("done", [])
+    assert stub.sent == [("com.webos.service.ime/insertText", {"text": "hello", "replace": False})]
+
+
+async def test_stub_warns_when_the_length_doesnt_change():
+    r = await stub_client(StubSsap(FOCUSED)).insert_text("hello", replace=False)
+    assert r.warnings == ["unconfirmed: the field didn't report a change"]
+
+
+async def test_stub_tv_without_lengths_is_learned():
+    # The C7: focus true, no surroundingTextLength (ASSUMPTION W-IME-LENGTH)
+    c = stub_client(StubSsap({"currentWidget": {"focus": True, "hasSurroundingText": False}}), platform="3.9.3")
+    r = await c.insert_text("hi", replace=True)
+    assert r.warnings[0].startswith("unconfirmed: this TV doesn't report") and c.ime_reports_length is False
+    assert any("sent unconfirmed" in lim for lim in c.capabilities()[1])
+
+
+async def test_stub_submit_waits_for_focus_to_go():
+    stub = StubSsap(FOCUSED, after=[{"currentWidget": {"focus": False}, "focusChanged": True}])
+    r = await stub_client(stub).submit_text()
+    assert r.warnings == [] and stub.sent == [("com.webos.service.ime/sendEnterKey", None)]
+    r = await stub_client(StubSsap(FOCUSED)).submit_text()
+    assert r.warnings == ["unconfirmed: the field still has focus"]
+
+
+async def test_stub_delete_expects_a_shorter_field():
+    focused = {"currentWidget": {"focus": True, "surroundingTextLength": 5}}
+    stub = StubSsap(focused, after=[{"currentWidget": {"focus": True, "surroundingTextLength": 3}}])
+    r = await stub_client(stub).delete_text(2)
+    assert r.warnings == [] and stub.sent == [("com.webos.service.ime/deleteCharacters", {"count": 2})]
+
+
+async def test_stub_no_ime_service():
+    c = stub_client(StubSsap({}, missing=True))
+    with pytest.raises(WebOsError, match="has no text input service"):
+        await c.insert_text("hi", replace=False)
+    caps, limits = c.capabilities()
+    assert "text_input" not in caps and any(lim.startswith("text_input: this TV has no text input") for lim in limits)
+
+
+async def test_stub_dry_run_sends_and_subscribes_to_nothing():
+    stub = StubSsap(FOCUSED)
+    c = stub_client(stub, dry_run=True)
+    for r in (await c.insert_text("hi", False), await c.delete_text(1), await c.submit_text()):
+        assert r.outcome == "dry_run" and r.warnings == ["not checked in a dry run: whether a text field has focus"]
+    assert stub.sent == [] and stub._push is None
+
+
+async def test_stub_text_checks():
+    c = stub_client(StubSsap(FOCUSED))
+    for bad, msg in (("  ", "empty"), ("a\tb", "U\\+0009"), ("x​y", "U\\+200B"), ("x" * 201, "limit is 200")):
+        with pytest.raises(WebOsError, match=msg):
+            await c.insert_text(bad, replace=False)
+
+
+@pytest.mark.parametrize(("platform", "ok"), [("3.9.3", False), ("4.0.0", True), ("10.3.1", True), (None, False)])
+async def test_stub_search_platform_gate(platform, ok):
+    # ASSUMPTION W-YOUTUBE-SEARCH: webOS 3.x ignores the link; 4 and up is assumed to act on it
+    c = stub_client(StubSsap({}), platform=platform)
+    assert ("app_search" in c.capabilities()[0]) is ok

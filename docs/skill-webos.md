@@ -25,6 +25,9 @@ connector name (e.g. `webos`).
 | `media_control(action, tv)` | play/pause/stop/rewind/fast_forward | sent only |
 | `set_screen(state, tv)` | picture off for music, keep sound | the power state changes |
 | `set_volume` / `set_mute` | only when volume_owner is "tv" | |
+| `insert_text(text, replace, tv)` | type into a focused **system** field (LG's search) instead of walking a keyboard with send_key | refuses if no system field has focus; confirmed by length on the G1 and C5, unconfirmed on the C7 |
+| `delete_text(count, tv)` / `submit_text(tv)` | backspace / Enter in that field | same rule |
+| `search_app(app="youtube", query, tv)` | "search YouTube for …" | YouTube in front; not on the C7 (webOS 3.9 ignores search links) |
 
 ## House rules this server already enforces
 
@@ -40,3 +43,5 @@ connector name (e.g. `webos`).
 - "off" in get_status means not answering: off, or off the network. `set_power on` is the fix
   for the first; doctor for the second.
 - now_playing has the app and play state only; webOS doesn't report titles.
+- Searching: YouTube → `search_app`. LG's own search → `insert_text` + `submit_text`. Netflix and
+  other apps with their own keyboard → `send_key` on their keyboard (insert_text refuses there).

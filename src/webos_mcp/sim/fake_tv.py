@@ -54,6 +54,7 @@ ACTIVE_STANDBY = "Active Standby"
 SUSPEND = "Suspend"
 OFF = "Off"  # not a TV string: the TV is off the network entirely
 
+IME_KEYBOARD = "com.webos.service.ime/registerRemoteKeyboard"
 NOT_FOUND = "404 no such service or method"
 NOT_REGISTERED = "401 insufficient permissions (not registered)"
 DENIED = "401 insufficient permissions"
@@ -135,6 +136,11 @@ class FakeTv:
         self.apps = [dict(a) for a in p.apps]
         self.inputs = [dict(i) for i in p.inputs]
         self.media: list[dict[str, Any]] = []
+        # A focused *system* text field (LG's search box) and its text; None: no field has focus, as in
+        # YouTube's or Netflix's own keyboard (ASSUMPTION W-IME-FOCUS)
+        self.text_field: str | None = None
+        self.submitted: list[str] = []  # what Enter submitted
+        self.searches: list[str] = []  # contentTarget links an app acted on (ASSUMPTION W-YOUTUBE-SEARCH)
         self.keys: set[str] = set()
         self.screen_unrecoverable = False
         self.journal: list[tuple[Any, ...]] = []
@@ -169,6 +175,28 @@ class FakeTv:
     @property
     def online(self) -> bool:
         return self.power != OFF
+
+    async def focus_field(self, text: str = "") -> None:
+        """Someone opened LG's search: a system text field has focus."""
+        self.text_field = text
+        await self._notify(IME_KEYBOARD, {"currentWidget": self._widget(), "focusChanged": True})
+
+    async def blur_field(self) -> None:
+        """Focus left the field (BACK, or another app's keyboard)."""
+        self.text_field = None
+        await self._notify(IME_KEYBOARD, {"currentWidget": {"focus": False}, "focusChanged": True})
+
+    def _widget(self) -> dict[str, Any]:
+        if self.text_field is None:
+            return {"focus": False}
+        widget: dict[str, Any] = {"focus": True, "contentType": "text", "hasSurroundingText": bool(self.text_field)}
+        if self.profile.ime_lengths:  # ASSUMPTION W-IME-LENGTH
+            widget |= {"cursorPosition": len(self.text_field), "surroundingTextLength": len(self.text_field)}
+        return widget
+
+    async def _field_changed(self) -> None:
+        if self.profile.ime_lengths:  # the C7 pushed nothing after the first change
+            await self._notify(IME_KEYBOARD, {"currentWidget": self._widget(), "focusChanged": False})
 
     def pair_with(self, key: str) -> None:
         """Trust a key without a dialog (simulate --paired, fixtures)."""
@@ -471,8 +499,33 @@ class FakeTv:
             app_id = payload.get("id")
             if not any(a["id"] == app_id for a in self.apps):
                 return {"returnValue": False, "errorCode": -101, "errorText": "no such app"}  # GUESSED wording
+            target = (payload.get("params") or {}).get("contentTarget")
+            if target and p.search_links:  # a TV that ignores it still answers true
+                self.searches.append(str(target))
             await self._foreground(str(app_id))
             return {"id": app_id}
+        # Text input: every call answers true, focused field or not (ASSUMPTION W-IME-TEXT)
+        if uri == IME_KEYBOARD:
+            if self.text_field is None and not p.ime_lengths:
+                return {}  # the C7 (and the C5 on HDMI) sent no currentWidget at all
+            return {"currentWidget": self._widget()}
+        if uri == "com.webos.service.ime/insertText":
+            if self.text_field is not None:
+                text = str(payload.get("text", ""))
+                self.text_field = text if payload.get("replace") else self.text_field + text
+                await self._field_changed()
+            return {}
+        if uri == "com.webos.service.ime/deleteCharacters":
+            if self.text_field is not None:
+                count = int(payload.get("count", 0))
+                self.text_field = self.text_field[: max(0, len(self.text_field) - count)]
+                await self._field_changed()
+            return {}
+        if uri == "com.webos.service.ime/sendEnterKey":
+            if self.text_field is not None:
+                self.submitted.append(self.text_field)
+                await self.blur_field()
+            return {}
         if uri == "tv/switchInput":
             match = next((i for i in self.inputs if i["id"] == payload.get("inputId")), None)
             if match is None:

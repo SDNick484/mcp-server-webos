@@ -36,6 +36,8 @@ you saw in `assumptions.py` (see "Recording results" at the end).
 | `capture` and the contract tests | verified against simulator only | 1 |
 | Streamable HTTP + Cloudflare Access; OpenRC service on Alpine | verified on hardware (2026-10-14, CT 210, Office TV; mobile app not yet) | 13 |
 | Log redaction (addresses, MACs, serials, UUIDs; keys always) | verified against simulator only | 4 |
+| IME calls and focus detection behind `insert_text` / `delete_text` / `submit_text` | verified on hardware (2026-11-09, all three TVs, by a spike script; the tools themselves not yet) | 14 |
+| `search_app` (YouTube search link) | verified on hardware (2026-11-09, G1 and C5 work, C7 refused; the tool itself not yet) | 14 |
 
 ## Before you start
 
@@ -309,6 +311,45 @@ table has all of them):
    was the container. Fixed by routing to, and binding on, the LXC's address.
 2. Then HTTP 421, `Invalid Host header: mcp.nickandrade.com`: `MCP_PUBLIC_HOSTS` was missing from
    the env file.
+
+## 14. Text input and app search
+
+First seen 2026-11-09 with a throwaway spike script (not in the repo) that made the same SSAP calls
+the tools now make; the tools themselves still need a run through the MCP layer. With the TV on LG's
+search box (the magnifier), then on YouTube's search screen:
+
+```sh
+mcp-server-webos call webos_get_status tv=Office                     # text_input, app_search in capabilities
+mcp-server-webos call webos_insert_text text=hello tv=Office         # in LG's search: no warning on the G1/C5
+mcp-server-webos call webos_delete_text count=2 tv=Office
+mcp-server-webos call webos_insert_text "text=lofi beats" replace=true tv=Office
+mcp-server-webos call webos_submit_text tv=Office                    # the results
+mcp-server-webos call webos_insert_text text=hello tv=Office         # now in YouTube's search: refused
+mcp-server-webos call webos_search_app app=youtube "query=lofi beats" tv=Office
+```
+
+- registerRemoteKeyboard's first reply says whether a system text field has focus (W-IME-FOCUS).
+  Apps with their own keyboard never have one, and the IME calls answer "ok" there while typing
+  nothing (W-IME-TEXT), so the refusal is what keeps the agent from believing it typed.
+- The field's reported length confirms each change (W-IME-LENGTH).
+- YouTube opens results for `https://www.youtube.com/tv?q=` (W-YOUTUBE-SEARCH). `#/search?q=` and
+  `/results?search_query=` opened an unrelated video on the G1.
+- Still open: whether holding the subscription (only for the length of a call) affects the TV's own
+  on-screen keyboard for someone using the remote at the same time; and webOS 4 and 5, which are
+  between the C7 that ignores search links and the G1 that honors them.
+
+| Check | Bedroom C7 | Family Room G1 | Office C5 |
+| --- | --- | --- | --- |
+| LG search reports focus true (W-IME-FOCUS) | 2026-11-09 yes | 2026-11-09 yes | 2026-11-09 yes |
+| YouTube search reports no focus (W-IME-FOCUS) | focus false | no currentWidget | focus false |
+| Netflix search reports no focus (W-IME-FOCUS) | | focus false | |
+| insert, delete, replace, Enter in LG search (W-IME-TEXT) | all, seen on screen | all, seen on screen | all, seen on screen |
+| IME calls in YouTube/Netflix type nothing, answer true (W-IME-TEXT) | YouTube | YouTube, Netflix | YouTube |
+| Field length pushed after each change (W-IME-LENGTH) | no (only hasSurroundingText) | 5, 3, 9, 10 | 5, 3, 9, 10 |
+| Enter pushes focus false (W-IME-LENGTH) | yes | yes | yes |
+| YouTube `tv?q=` link shows results (W-YOUTUBE-SEARCH) | no, YouTube home | yes | yes |
+| YouTube `v=<id>` link plays the video | no, even from a cold launch | yes | |
+| The tools through `call` | | | |
 
 ## Recording results
 
