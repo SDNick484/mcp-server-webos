@@ -20,6 +20,13 @@ respawn_delay=5
 respawn_max=10
 respawn_period=300
 
+# Stopping: SIGTERM, up to 15 s to shut down cleanly, then SIGKILL (OpenRC's default is SIGTERM/5).
+# Shutdown is usually about 2 s, but the TVs stop one at a time, each up to 5 s plus a WebSocket
+# close that isn't time-limited (aiohttp's own 10 s). So a TV that stops answering mid-shutdown
+# can still end in SIGKILL.
+# supervise-daemon reads this at start: the restart that installs it still stops the old way.
+retry="SIGTERM/15/SIGKILL/5"
+
 depend() {
 	need net
 	after firewall
