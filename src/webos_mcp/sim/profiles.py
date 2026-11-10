@@ -77,6 +77,8 @@ class Profile:
     sound_output: str  # ASSUMPTION W-SOUND-OUTPUT
     volume_flat: bool  # audio/getVolume without the volumeStatus wrapper (older webOS)
     media_info: bool  # com.webos.media/getForegroundAppInfo exists; False: 404 (ASSUMPTION W-NOW-PLAYING)
+    ime_lengths: bool  # a focused field reports surroundingTextLength (ASSUMPTION W-IME-LENGTH)
+    search_links: bool  # YouTube acts on a contentTarget search link (ASSUMPTION W-YOUTUBE-SEARCH)
     apps: list[dict[str, Any]] = field(default_factory=lambda: [dict(a) for a in APPS])
     inputs: list[dict[str, Any]] = field(default_factory=lambda: [dict(i) for i in INPUTS])
 
@@ -105,6 +107,8 @@ PROFILES: dict[str, Profile] = {
         sound_output="tv_speaker",
         volume_flat=True,
         media_info=False,  # 404, as on the G1: the C7's capture, 2026-10-17 (W-NOW-PLAYING)
+        ime_lengths=False,  # the C7 in LG's search, 2026-11-09
+        search_links=False,  # YouTube ignored contentTarget on the C7, 2026-11-09
     ),
     "g1": Profile(
         key="g1",
@@ -127,6 +131,8 @@ PROFILES: dict[str, Profile] = {
         sound_output="external_arc",
         volume_flat=False,
         media_info=False,  # 404 on webOS 6: the G1's capture, 2026-10-16 (W-NOW-PLAYING)
+        ime_lengths=True,  # the G1 in LG's search, 2026-11-09
+        search_links=True,  # the G1, 2026-11-09
     ),
     "c5-webos25": Profile(
         key="c5-webos25",
@@ -149,6 +155,8 @@ PROFILES: dict[str, Profile] = {
         sound_output="external_arc",
         volume_flat=False,
         media_info=True,  # the Office C5's capture, 2026-10-16
+        ime_lengths=True,  # the Office C5 in LG's search, 2026-11-09
+        search_links=True,  # the Office C5, 2026-11-09
     ),
     "c5-webos26": Profile(
         key="c5-webos26",
@@ -171,6 +179,8 @@ PROFILES: dict[str, Profile] = {
         sound_output="external_arc",
         volume_flat=False,
         media_info=True,  # as on webOS 25 (GUESSED)
+        ime_lengths=True,  # as on webOS 25 (GUESSED)
+        search_links=True,  # as on webOS 25 (GUESSED)
     ),
 }
 
@@ -183,4 +193,5 @@ SOURCES: dict[str, str] = {
     "wake time": "lgpowercontrol: ~4 s from Active Standby (shortened in tests)",
     "connection info shape": "GUESSED (ASSUMPTION W-MAC-SOURCE)",
     "launch points, inputs, media": "aiowebostv's parsers; lgtv-mcp's fakes",
+    "text input (IME), YouTube search links": "the spike on all three TVs, 2026-11-09",
 }

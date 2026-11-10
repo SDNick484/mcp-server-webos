@@ -23,7 +23,7 @@ Targets: the owner's 2017 C7 (webOS 3.5, Bedroom), 2021 G1 (webOS 6.0, Family Ro
   `_create_input_ws`), guarded by `tests/test_compat.py`; why is in its docstring
 - `src/webos_mcp/client.py`: `TvClient`, one supervised connection per TV, the pushed-state cache,
   capabilities, rediscovery, and every action (`_call` asserts dry run is off)
-- `src/webos_mcp/server.py`: the ten tools (`MCPServer` from `mcp` 2.x), `ActionResult`,
+- `src/webos_mcp/server.py`: the fourteen tools (`MCPServer` from `mcp` 2.x), `ActionResult`,
   resources (`webos://...`), the `watch` prompt
 - `src/webos_mcp/probe.py` (keyless hello), `wol.py`, `discovery.py` (SSDP)
 - `src/webos_mcp/assumptions.py`: every protocol detail relied on (W-* ids). Cite ids in code
@@ -52,10 +52,12 @@ Targets: the owner's 2017 C7 (webOS 3.5, Bedroom), 2021 G1 (webOS 6.0, Family Ro
 
 ## Rules for changes
 
-- **No escape hatches.** No raw SSAP/luna passthrough, no URL or free-text tools; keys and apps
-  are allow-lists. Widen them deliberately, with README and tests in the same commit. Users grow
-  the app allow-list with `apps`; never give the model a tool for it, and keep `apps.EXCLUDED` out
-  of `--add`.
+- **No escape hatches.** No raw SSAP/luna passthrough, no URL tools; keys and apps are allow-lists.
+  Free text exists in exactly two places, both bounded and printable-only: `insert_text` (gated on a
+  focused system text field, W-IME-FOCUS) and `search_app`'s query (into a link the server builds,
+  `client.SEARCH_LINKS`). Widen any of these deliberately, with README and tests in the same
+  commit. Users grow the app allow-list with `apps`; never give the model a tool for it, and keep
+  `apps.EXCLUDED` out of `--add`.
 - **Never guess a device or a source.** With several TVs, an action without `tv` is refused; a
   key is only ever sent after the hello shows the paired deviceUUID; rediscovery adopts an address
   only on a deviceUUID match; a source name matching an app and an input is refused.

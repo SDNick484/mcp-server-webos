@@ -43,9 +43,10 @@ import logging
 import random
 import time
 import unicodedata
-from collections.abc import Awaitable, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable
 from datetime import UTC, datetime
 from typing import Any, Literal
+from urllib.parse import quote
 
 import aiohttp
 from aiowebostv import endpoints as ep
@@ -82,6 +83,78 @@ MEDIA_ACTIONS: dict[str, str] = {
 
 # Sound outputs where volume belongs to another device (ASSUMPTION W-SOUND-OUTPUT, W-VOLUME-ARC).
 EXTERNAL_OUTPUTS = ("external_", "bt_soundbar", "lineout")
+
+# --- text input (the TV's IME service) -------------------------------------------------
+# Seen on all three TVs (2026-11-09). Every one of these answers returnValue true whether or not a
+# text field has focus, and whether or not anything was typed (ASSUMPTION W-IME-TEXT), so the reply
+# proves nothing. What does tell: the registerRemoteKeyboard subscription, whose currentWidget says
+# whether a *system* text field has focus (ASSUMPTION W-IME-FOCUS). Apps that draw their own keyboard
+# (YouTube, Netflix) never get one, so typing there is refused instead of silently doing nothing.
+IME_KEYBOARD = "com.webos.service.ime/registerRemoteKeyboard"  # aiowebostv has no constant for it
+IME_INSERT = ep.INSERT_TEXT
+IME_DELETE = ep.SEND_DELETE
+IME_ENTER = ep.SEND_ENTER
+MAX_TEXT = 200  # a search box, a name, a code: not a document
+MAX_DELETE = 100
+MAX_QUERY = 100
+# A dry run sends nothing, and subscribing to the keyboard is still a request to the TV
+UNCHECKED_FOCUS = "not checked in a dry run: whether a text field has focus"
+
+# App searches by deep link: the server owns the URL, the model only supplies the query, so this is
+# not a URL tool. Only apps in this table, and only when allow-listed and installed. ASSUMPTION
+# W-YOUTUBE-SEARCH: https://www.youtube.com/tv?q=... opens results on webOS 6.5 and 10.3; webOS 3.9
+# ignores contentTarget entirely; other URL shapes (#/search?q=, /results?search_query=) don't search.
+SEARCH_LINKS: dict[str, tuple[str, str]] = {
+    "youtube": ("youtube.leanback.v4", "https://www.youtube.com/tv?q={query}"),
+}
+SEARCH_MIN_PLATFORM = 4  # the C7 (3.9.3) ignores it, the G1 (6.5.3) doesn't; 4 and 5 are untested
+
+
+def platform_major(platform: str | None) -> int | None:
+    """The major number of deviceOSReleaseVersion ("10.3.1" -> 10), or None."""
+    head = (platform or "").split(".", 1)[0]
+    return int(head) if head.isdigit() else None
+
+
+def checked_text(text: str, limit: int, what: str = "text") -> str:
+    """Text the model wants typed: one line of printable characters, bounded. Raises WebOsError.
+
+    The schema already bounds the length; this also refuses control and format characters (a newline
+    would act differently per field, and invisible characters have no business in a search box)."""
+    if not text.strip():
+        raise WebOsError(f"The {what} is empty.")
+    if len(text) > limit:
+        raise WebOsError(f"The {what} is {len(text)} characters; the limit is {limit}.")
+    bad = sorted({f"U+{ord(ch):04X}" for ch in text if unicodedata.category(ch)[0] == "C"})
+    if bad:
+        hint = " To press Enter, use webos_submit_text." if "U+000A" in bad or "U+000D" in bad else ""
+        raise WebOsError(f"The {what} has control or invisible characters ({', '.join(bad[:5])}).{hint}")
+    return text
+
+
+class _Keyboard:
+    """What registerRemoteKeyboard has said so far, for the length of one text action."""
+
+    def __init__(self) -> None:
+        self.widget: dict[str, Any] = {}
+        self.pushes = 0
+
+    async def on_push(self, payload: Any) -> None:
+        # The first reply on a TV with nothing focused may have no currentWidget at all (the C7 and C5
+        # on an HDMI input or the home screen); that means no field, the same as {"focus": false}.
+        if isinstance(payload, dict) and isinstance(payload.get("currentWidget"), dict):
+            self.widget = dict(payload["currentWidget"])
+        self.pushes += 1
+
+    @property
+    def focused(self) -> bool:
+        return self.widget.get("focus") is True
+
+    @property
+    def length(self) -> int | None:
+        """How many characters the field holds, on TVs that say (ASSUMPTION W-IME-LENGTH)."""
+        n = self.widget.get("surroundingTextLength")
+        return n if isinstance(n, int) and not isinstance(n, bool) else None
 
 
 def clean(text: Any, limit: int = 64) -> str:
@@ -183,6 +256,7 @@ class TvClient:
     rediscover_every = 300.0
     wake_wait = 45.0  # ASSUMPTION W-WAKE-TIME: the C5 took ~10 s to show a picture, 17-18 s to answer
     confirm_wait = 10.0
+    ime_wait = 2.0  # the G1 and C5 pushed the field's new length within ~100 ms
 
     def __init__(
         self,
@@ -204,6 +278,8 @@ class TvClient:
         self.error: str | None = None
         self.needs_pairing = False
         self.screen_unsupported = False
+        self.ime_unsupported = False  # registerRemoteKeyboard answered 404
+        self.ime_reports_length: bool | None = None  # learned on the first focused field (W-IME-LENGTH)
         self.cert_warning: str | None = None
         self.moved_from: str | None = None
         self.last_attempt = 0.0
@@ -528,6 +604,22 @@ class TvClient:
             limits.append("keys: the TV refused the button socket; media_control still works")
         else:
             caps.append("keys")
+        if self.ime_unsupported:
+            limits.append("text_input: this TV has no text input service; walk the on-screen keyboard with keys")
+        else:
+            caps.append("text_input")
+            limits.append(
+                "text_input: only into system text fields (LG's own search box and others that use the TV's "
+                "keyboard). Apps that draw their own keyboard, such as YouTube and Netflix, don't take it: use "
+                "app_search for YouTube, or keys on the app's keyboard"
+            )
+            if self.ime_reports_length is False:
+                limits.append("text_input: this TV doesn't report what a field holds, so typing is sent unconfirmed")
+        search_limit = self._search_limitation()
+        if search_limit is None:
+            caps.append("app_search")
+        elif search_limit:
+            limits.append(f"app_search: {search_limit}")
         owner = self.volume_owner()
         if owner == "external":
             limits.append(
@@ -538,6 +630,26 @@ class TvClient:
         else:
             caps.append("volume")
         return caps, limits
+
+    def _searchable(self, app: str) -> bool:
+        """The app has a search link, is on the allow-list, and this TV has it installed."""
+        app_id = SEARCH_LINKS[app][0]
+        allowed = any(a.id == app_id for a in self.settings.apps.values())
+        return allowed and isinstance(self.cache.apps.get(app_id), dict)
+
+    def _search_limitation(self) -> str | None:
+        """None: app_search works here. "": nothing to search on this TV (say nothing). Else why not."""
+        if not any(self._searchable(app) for app in SEARCH_LINKS):
+            return ""
+        major = platform_major(self.tv.platform)
+        if major is None:
+            return "this TV's webOS version isn't known yet"
+        if major < SEARCH_MIN_PLATFORM:  # ASSUMPTION W-YOUTUBE-SEARCH
+            return (
+                f"YouTube on webOS {self.tv.platform} ignores search links (seen on webOS 3.9); "
+                "open it and use keys on its keyboard"
+            )
+        return None
 
     def snapshot(self) -> Status:
         caps, limits = self.capabilities()
@@ -791,6 +903,131 @@ class TvClient:
             return Result(f"{action} on {self.name}", sent, "dry_run")
         await self._call(lambda c: c.request(uri))  # ASSUMPTION W-MEDIA-CONTROLS
         return Result(f"Sent {action} to {self.name}", sent)
+
+    # --- text input ----------------------------------------------------------------------
+    # Each text action subscribes to registerRemoteKeyboard for its own duration only, rather than for
+    # the life of the connection: the subscription is how the TV says whether a field has focus, and
+    # holding it open permanently would make this server a registered remote keyboard all the time,
+    # which nothing here needs (and whose effect on the TV's own on-screen keyboard nobody has checked).
+    @contextlib.asynccontextmanager
+    async def _keyboard(self) -> AsyncIterator[_Keyboard]:
+        kb = _Keyboard()
+        try:
+            await self._call(lambda c: c.subscribe(kb.on_push, IME_KEYBOARD))  # ASSUMPTION W-IME-FOCUS
+        except WebOsTvServiceNotFoundError as exc:
+            self.ime_unsupported = True
+            raise WebOsError(
+                f"{self.name} has no text input service. Walk the on-screen keyboard with webos_send_key."
+            ) from exc
+        try:
+            yield kb
+        finally:
+            client = self.client
+            if client is not None:
+                with contextlib.suppress(KeyError, WebOsTvCommandError, OSError, aiohttp.ClientError):
+                    await client.unsubscribe(IME_KEYBOARD)
+
+    def _require_field(self, kb: _Keyboard) -> None:
+        if not kb.focused:
+            front = self._app_title(self.cache.app_id) or self.cache.app_id or "the current screen"
+            raise WebOsError(
+                f"No text field has focus on {self.name} ({front} is in front), so nothing would be typed. "
+                "Apps that draw their own keyboard, like YouTube and Netflix, never have one: for YouTube use "
+                "webos_search_app; otherwise move to the field with webos_send_key, or type on the app's "
+                "keyboard with webos_send_key (arrows and ENTER)."
+            )
+        has_length = kb.length is not None
+        if self.ime_reports_length is None or has_length:
+            self.ime_reports_length = has_length
+
+    def _take_text_token(self, what: str) -> None:
+        wait = self._key_bucket.take(1.0)  # typing shares the keys' budget: both drive the UI
+        if wait > 0:
+            raise WebOsError(refusal(what, wait, self.name))
+
+    async def _confirm_length(self, kb: _Keyboard, before: int | None, expected: int | None) -> list[str]:
+        """Wait for the TV to report the field's new length (ASSUMPTION W-IME-LENGTH)."""
+        if before is None or expected is None:
+            return ["unconfirmed: this TV doesn't report what the field holds; check the screen"]
+        if await self._wait_for(lambda: kb.length == expected, self.ime_wait):
+            return []
+        now = kb.length
+        if now is None or now == before:
+            return ["unconfirmed: the field didn't report a change"]
+        return [f"the field now holds {now} characters (expected {expected}); check the screen"]
+
+    async def insert_text(self, text: str, replace: bool) -> Result:
+        text = checked_text(text, MAX_TEXT)
+        self._require_awake()
+        self._take_text_token(f"type into {self.name}")
+        sent = [f"ssap://{IME_INSERT} {text!r}" + (" replace" if replace else "")]
+        what = f"{'replace the focused field with' if replace else 'type'} {text!r} on {self.name}"
+        if self.settings.dry_run:
+            return Result(what, sent, "dry_run", [UNCHECKED_FOCUS])
+        async with self._keyboard() as kb:
+            self._require_field(kb)
+            before = kb.length
+            payload = {"text": text, "replace": replace}
+            await self._call(lambda c: c.request(IME_INSERT, payload))  # ASSUMPTION W-IME-TEXT
+            # replace: the whole field (seen: "hel world" + "lofi beats" -> 10 characters)
+            expected = len(text) if replace else (before + len(text) if before is not None else None)
+            warnings = await self._confirm_length(kb, before, expected)
+        verb = "Replaced the field's text with" if replace else "Typed"
+        return Result(f"{verb} {text!r} on {self.name}", sent, warnings=warnings)
+
+    async def delete_text(self, count: int) -> Result:
+        self._require_awake()
+        self._take_text_token(f"delete text on {self.name}")
+        sent = [f"ssap://{IME_DELETE} {count}"]
+        if self.settings.dry_run:
+            return Result(f"delete {count} character(s) on {self.name}", sent, "dry_run", [UNCHECKED_FOCUS])
+        async with self._keyboard() as kb:
+            self._require_field(kb)
+            before = kb.length
+            if before == 0:
+                return Result(f"The focused field on {self.name} is already empty", [], "unchanged")
+            await self._call(lambda c: c.request(IME_DELETE, {"count": count}))  # ASSUMPTION W-IME-TEXT
+            expected = max(0, before - count) if before is not None else None
+            warnings = await self._confirm_length(kb, before, expected)
+        return Result(f"Deleted {count} character(s) before the cursor on {self.name}", sent, warnings=warnings)
+
+    async def submit_text(self) -> Result:
+        self._require_awake()
+        self._take_text_token(f"press Enter on {self.name}")
+        sent = [f"ssap://{IME_ENTER}"]
+        if self.settings.dry_run:
+            return Result(f"submit the focused text field on {self.name}", sent, "dry_run", [UNCHECKED_FOCUS])
+        async with self._keyboard() as kb:
+            self._require_field(kb)
+            await self._call(lambda c: c.request(IME_ENTER))  # ASSUMPTION W-IME-TEXT
+            # The field gives up focus once its search runs (all three TVs pushed {"focus": false})
+            done = await self._wait_for(lambda: not kb.focused, self.ime_wait)
+        warnings = [] if done else ["unconfirmed: the field still has focus"]
+        return Result(f"Submitted the text field on {self.name}", sent, warnings=warnings)
+
+    async def search_app(self, app: str, query: str) -> Result:
+        query = checked_text(query, MAX_QUERY, "query")
+        self._require_awake()
+        app_id, template = SEARCH_LINKS[app]
+        title = self._app_title(app_id) or app
+        if not any(a.id == app_id for a in self.settings.apps.values()):
+            raise WebOsError(f"{title} isn't on the app allow-list (`mcp-server-webos apps` adds it).")
+        if not self._searchable(app):
+            raise WebOsError(f"{title} isn't installed on {self.name}.")
+        why_not = self._search_limitation()
+        if why_not:
+            raise WebOsError(f"Can't search {title} on {self.name}: {why_not}.")
+        self._take_text_token(f"search {title} on {self.name}")
+        target = template.format(query=quote(query, safe=""))
+        sent = [f"ssap://{ep.LAUNCH} {app_id} contentTarget={target}"]
+        if self.settings.dry_run:
+            return Result(f"open {title}'s search for {query!r} on {self.name}", sent, "dry_run")
+        # ASSUMPTION W-YOUTUBE-SEARCH: the TV answers returnValue true whether or not the app acts on it
+        await self._call(lambda c: c.launch_app_with_params(app_id, {"contentTarget": target}))
+        if await self._wait_for(lambda: self.cache.app_id == app_id, self.confirm_wait):
+            return Result(f"Opened {title}'s search for {query!r} on {self.name}", sent)
+        showing = self._app_title(self.cache.app_id) or "something else"
+        raise WebOsError(f"Sent the search to {title}, but {self.name} still shows {showing}.")
 
     def _require_volume(self) -> None:
         owner = self.volume_owner()

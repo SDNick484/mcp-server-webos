@@ -1,4 +1,4 @@
-"""MCP tool definitions. Deliberately small and typed: allow-listed keys and apps, no URLs, no text.
+"""MCP tool definitions. Deliberately small and typed: allow-listed keys and apps, no URLs, bounded text.
 
 How a decorated function becomes a tool the model can call:
   - ``@mcp.tool()`` registers it; it then appears in the client's ``tools/list``.
@@ -10,8 +10,13 @@ How a decorated function becomes a tool the model can call:
   - The *return type* becomes the ``outputSchema`` when it is structured
     (a TypedDict, model or dict), and the value is sent as structured content.
 
-Ten tools, on purpose: every tool definition costs context in every client.
+Fourteen tools, on purpose: every tool definition costs context in every client.
 What is left out, and why, is in docs/OUT_OF_SCOPE.md.
+
+Two kinds of free text are allowed, deliberately and nowhere else: what to type
+into a focused *system* text field (webos_insert_text), and a search query for
+an allow-listed app whose search link the server builds itself (webos_search_app).
+Both are one line of printable characters with a length cap; neither is a URL.
 """
 
 from __future__ import annotations
@@ -27,7 +32,7 @@ from pydantic import Field
 from typing_extensions import TypedDict
 
 from . import keystore, tvs
-from .client import MEDIA_ACTIONS, Result, Status, TvClient
+from .client import MAX_DELETE, MAX_QUERY, MAX_TEXT, MEDIA_ACTIONS, SEARCH_LINKS, Result, Status, TvClient
 from .config import ALLOWED_KEYS, DEFAULT_APPS, LEFT_OUT_KEYS, KeyName, Settings, load_settings
 from .tools import ACT, ACT_IDEMPOTENT, READ_ONLY
 
@@ -87,7 +92,9 @@ mcp = MCPServer(
         "(capabilities, limitations) what works on it. With several TVs, name one with `tv`; a call without it "
         "is refused rather than guessed. When a TV's sound goes to a receiver (volume_owner 'external'), volume "
         "belongs to the receiver's own server (onkyo_set_volume), not to this one. A TV that is off doesn't answer: "
-        "power 'off' means off or off the network, and webos_set_power on wakes it."
+        "power 'off' means off or off the network, and webos_set_power on wakes it. To type, prefer "
+        "webos_insert_text over walking an on-screen keyboard with webos_send_key, where get_status lists "
+        "text_input; it only reaches system text fields (LG's search), so for YouTube use webos_search_app."
     ),
     lifespan=lifespan,
 )
@@ -317,6 +324,8 @@ async def webos_send_key(key: KeyName, repeat: Repeat = 1, tv: TvArg = None) -> 
     <important_notes>
     - Rate limited via token bucket (capacity 10, rate 3.0/s) to prevent runaway key flooding.
     - For media transport (play, pause, stop), prefer `webos_media_control`.
+    - To type, prefer `webos_insert_text` (where get_status lists text_input) or, for YouTube,
+      `webos_search_app`. Walk an app's own on-screen keyboard with arrows and ENTER only when they refuse.
     </important_notes>
     """
     c = registry().pick(tv)
@@ -344,6 +353,109 @@ async def webos_media_control(
     c = registry().pick(tv)
     async with c.lock:
         return _result(c, await c.media_control(action))
+
+
+# --- text input -------------------------------------------------------------------------
+# min_length/max_length become minLength/maxLength in the schema, so the SDK rejects an empty or
+# oversized string before our code runs; client.checked_text also refuses control characters.
+Text = Annotated[
+    str,
+    Field(
+        min_length=1,
+        max_length=MAX_TEXT,
+        description=f"What to type: one line, up to {MAX_TEXT} characters (no newlines; submit with "
+        "webos_submit_text).",
+    ),
+]
+Replace = Annotated[bool, Field(description="True: replace everything in the field. False: add at the cursor.")]
+Count = Annotated[int, Field(ge=1, le=MAX_DELETE, description=f"How many characters to delete (1-{MAX_DELETE}).")]
+
+
+@mcp.tool(title="Type into a text field", annotations=ACT)
+async def webos_insert_text(text: Text, replace: Replace = False, tv: TvArg = None) -> ActionResult:
+    """Type text into the TV's focused text field, instead of walking an on-screen keyboard with keys.
+
+    <use_case>
+    Fill a search box or other text field on the TV in one call: e.g. open LG's search and type
+    "lofi beats", then webos_submit_text.
+    </use_case>
+
+    <important_notes>
+    - Only works where get_status lists `text_input`, and only in *system* text fields (LG's own
+      search, and fields that use the TV's keyboard). The field must already have focus.
+    - Refused, with nothing sent, when no system field has focus. YouTube and Netflix draw their
+      own keyboards and never have one: use `webos_search_app` for YouTube, or `webos_send_key`
+      (arrows, ENTER) on the app's keyboard.
+    - Confirmed by the field's reported length where the TV reports it; a warning says when not.
+    </important_notes>
+    """
+    c = registry().pick(tv)
+    async with c.lock:
+        return _result(c, await c.insert_text(text, replace))
+
+
+@mcp.tool(title="Delete text in a text field", annotations=ACT)
+async def webos_delete_text(count: Count = 1, tv: TvArg = None) -> ActionResult:
+    """Delete characters before the cursor in the TV's focused text field (like Backspace).
+
+    <use_case>
+    Correct a typo after webos_insert_text. To start over, webos_insert_text with replace=true is simpler.
+    </use_case>
+
+    <important_notes>
+    - Same rules as `webos_insert_text`: a focused system text field only; refused otherwise.
+    </important_notes>
+    """
+    c = registry().pick(tv)
+    async with c.lock:
+        return _result(c, await c.delete_text(count))
+
+
+@mcp.tool(title="Submit a text field", annotations=ACT)
+async def webos_submit_text(tv: TvArg = None) -> ActionResult:
+    """Press the keyboard's Enter in the TV's focused text field, e.g. to run a search.
+
+    <use_case>
+    Run the search after webos_insert_text.
+    </use_case>
+
+    <important_notes>
+    - Same rules as `webos_insert_text`: a focused system text field only; refused otherwise.
+    - Confirmed when the field gives up focus, as it does once the search runs.
+    </important_notes>
+    """
+    c = registry().pick(tv)
+    async with c.lock:
+        return _result(c, await c.submit_text())
+
+
+# Spelled out so the schema has an enum; tests check it matches client.SEARCH_LINKS.
+SearchApp = Annotated[Literal["youtube"], Field(description="Which app to search. Only YouTube has a search link.")]
+Query = Annotated[
+    str, Field(min_length=1, max_length=MAX_QUERY, description=f"What to search for, up to {MAX_QUERY} characters.")
+]
+
+
+@mcp.tool(title="Search inside an app", annotations=ACT_IDEMPOTENT)
+async def webos_search_app(app: SearchApp, query: Query, tv: TvArg = None) -> ActionResult:
+    """Open an app straight to its search results for a query (YouTube).
+
+    <use_case>
+    "Search YouTube for lofi beats": opens YouTube on its results, with no typing. YouTube's own
+    keyboard doesn't take webos_insert_text, so this is the way to search it.
+    </use_case>
+
+    <important_notes>
+    - Only works where get_status lists `app_search`: the app must be allow-listed and installed,
+      and older TVs (webOS 3.x) ignore the search and just open the app.
+    - The server builds the link from the query; no URL is accepted.
+    - Confirms the app is in front. The TV can't report whether the app ran the search.
+    </important_notes>
+    """
+    assert app in SEARCH_LINKS
+    c = registry().pick(tv)
+    async with c.lock:
+        return _result(c, await c.search_app(app, query))
 
 
 Level = Annotated[int, Field(ge=0, le=100, description="Volume 0-100 (capped per TV by max_volume).")]

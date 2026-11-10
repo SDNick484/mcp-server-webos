@@ -375,6 +375,55 @@ ASSUMPTIONS: tuple[Assumption, ...] = (
         note="2026-10-16: the G1 and C5 both answered doctor's search, each on its own address. A TV that is off "
         "doesn't answer, so rediscovery only finds a TV once it is on.",
     ),
+    # --- text input and app search (the spike of 2026-11-09, all three TVs) -----------------
+    Assumption(
+        "W-IME-FOCUS",
+        "Subscribing to com.webos.service.ime/registerRemoteKeyboard answers at once with currentWidget.focus "
+        "true when a system text field has focus, and {focus: false} or no currentWidget otherwise; apps that "
+        "draw their own keyboard (YouTube, Netflix) never report focus.",
+        "aiowebostv's IME endpoints and LG's mobile-app traffic; confirmed by the spike, not by documentation",
+        "high",
+        status="hardware-verified",
+        note="2026-11-09, all three TVs: LG's search box reported focus true; YouTube's search reported focus "
+        "false (C7, C5) or no currentWidget (G1); Netflix's search (G1) focus false; HDMI and the home screen no "
+        "currentWidget (C7, C5) or focus false (G1). Each prediction matched what appeared on screen.",
+    ),
+    Assumption(
+        "W-IME-TEXT",
+        "insertText (text, replace), deleteCharacters (count) and sendEnterKey act on the focused system text "
+        "field; replace true replaces the whole field; and all three answer returnValue true even when no field "
+        "has focus and nothing happens.",
+        "aiowebostv endpoints.py (INSERT_TEXT, SEND_DELETE, SEND_ENTER); the spike",
+        "high",
+        status="hardware-verified",
+        note="2026-11-09, LG search on the C7 (3.9.3), G1 (6.5.3) and C5 (10.3.1): 'hello' -> delete 2 -> ' world' "
+        "-> replace 'lofi beats' read 'lofi beats' on screen, and Enter showed its results. In YouTube and "
+        "Netflix, and with nothing focused, every call answered true and nothing was typed.",
+    ),
+    Assumption(
+        "W-IME-LENGTH",
+        "After each change to a focused field, the TV pushes currentWidget with surroundingTextLength (and "
+        "cursorPosition) on webOS 6 and later, and on submit pushes {focus: false}; webOS 3.9 pushes neither "
+        "length field.",
+        "the spike",
+        "medium",
+        status="hardware-verified",
+        note="2026-11-09: the G1 and C5 pushed 5, 3, 9, 10 for the sequence above within ~100 ms; the C7 reported "
+        "only hasSurroundingText and no updates after the first insert. All three pushed focus false on Enter. "
+        "Which webOS 4/5 TVs report lengths is unknown; a TV that doesn't gets an 'unconfirmed' warning.",
+    ),
+    Assumption(
+        "W-YOUTUBE-SEARCH",
+        "Launching youtube.leanback.v4 with params {contentTarget: 'https://www.youtube.com/tv?q=<query>'} opens "
+        "YouTube's results for the query on webOS 4 and later; webOS 3.x's YouTube ignores contentTarget.",
+        "the spike; contentTarget is how Home Assistant's webostv play_media opens a YouTube video",
+        "medium",
+        status="hardware-verified",
+        note="2026-11-09: results on the G1 (6.5.3, YouTube already open) and C5 (10.3.1); the C7 (3.9.3) just "
+        "showed YouTube's home, even from a cold launch, and ignored a plain v=<id> too. '#/search?q=' and "
+        "'/results?search_query=' opened some other video on the G1. The cut-off at webOS 4 is a guess: 4 and 5 "
+        "are untested. The TV answers returnValue true either way.",
+    ),
 )
 
 BY_ID = by_id(ASSUMPTIONS)
