@@ -42,6 +42,10 @@ jobs:
           python -m venv /tmp/v && /tmp/v/bin/pip install "$(ls dist/*.whl)"
           /tmp/v/bin/mcp-server-webos --version
           /tmp/v/bin/python -c "import webos_mcp.server; from importlib.resources import files; assert any(files('webos_mcp.sim').joinpath('fixtures').glob('*.json'))"  # the simulator needs its fixtures
+      # ...and answer an MCP client over stdio with the version being released (scripts/smoke_stdio.py).
+      - run: |
+          version=${GITHUB_REF_NAME#v}
+          WEBOS_CONFIG_DIR=/tmp/empty-config python scripts/smoke_stdio.py --expect-version "$version" --call webos_get_status -- /tmp/v/bin/mcp-server-webos
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: dist

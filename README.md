@@ -14,9 +14,14 @@ conventions: typed tools with annotations, an `ActionResult` from every action, 
 a wire-level simulator, an assumptions registry, Streamable HTTP behind Cloudflare Access, and an
 OpenRC service for an Alpine LXC.
 
-> **Status: built and tested against a simulator only.** Nothing here has run against a real TV
-> yet. [HARDWARE_VALIDATION.md](https://github.com/SDNick484/mcp-server-webos/blob/main/HARDWARE_VALIDATION.md) is the checklist that changes that, and
-> the table at the end of this README says what has been confirmed.
+> **Status: alpha, and looking for testers with other LG TVs.** It runs daily on the three TVs below:
+> pairing, status, screen off, sources, the text tools and YouTube search have run on real sets
+> (2026-10-14 to 2026-11-10), and the HTTP service runs behind Cloudflare Access. Wake-on-LAN, keys
+> and media controls have so far run only on the 2025 C5, and other models only against the
+> simulator. [HARDWARE_VALIDATION.md](https://github.com/SDNick484/mcp-server-webos/blob/main/HARDWARE_VALIDATION.md) is the checklist, the table at the end
+> of this README says what has been confirmed, and a
+> [hardware report](https://github.com/SDNick484/mcp-server-webos/issues/new?template=hardware_report.yml)
+> for your TV (working or not) is the most useful thing you can send.
 
 ## The TVs it targets
 
@@ -25,8 +30,8 @@ protocol and will probably work, but nothing is promised for them.
 
 | Room | Model | Platform | Control port | Notes |
 | --- | --- | --- | --- | --- |
-| Bedroom | OLED65C7P-U (2017 C7) | webOS 3.5 | 3000 (ws) | no `now_playing` (no media service) |
-| Family Room | OLED77G1PUA (2021 G1) | webOS 6.5 | 3000 (ws); 3001 (wss) also open | no `now_playing` (no media service) |
+| Bedroom | OLED65C7P-U (2017 C7) | webOS 3.5 (reports 3.9.3) | 3000 (ws) | no `now_playing` (no media service) |
+| Family Room | OLED77G1PUA (2021 G1) | webOS 6.5 (reports 6.5.3) | 3000 (ws); 3001 (wss) also open | no `now_playing` (no media service) |
 | Office | OLED65C5PUA (2025 C5) | webOS 25 (26 on offer) | 3001 (wss) | webOS 26 changed pairing (see below) |
 
 A TV usually sits on one HDMI input from an Onkyo receiver, and **volume belongs to the
@@ -47,6 +52,10 @@ before it updates.
 
 ## Install
 
+With [uv](https://docs.astral.sh/uv/), nothing to install: `uvx mcp-server-webos ...` fetches it
+into a cached environment and runs it (`uvx mcp-server-webos pair --host <ip> --name <room>`). Or
+in a virtualenv:
+
 ```sh
 python -m venv ~/.venvs/webos && . ~/.venvs/webos/bin/activate
 pip install mcp-server-webos
@@ -65,7 +74,7 @@ Python 3.11 or newer. Every dependency ships a musl wheel, so Alpine needs no co
 ## Pair each TV
 
 The TV must be on. On a webOS 3.x set (the C7), turn on **LG Connect Apps** in its network
-settings first. For `set_power on` to work, also turn on the setting that lets the network wake
+settings first. For `webos_set_power on` to work, also turn on the setting that lets the network wake
 it: "Mobile TV On", "TV On With Mobile" or "Turn on via Wi-Fi", depending on the generation.
 
 ```sh
@@ -93,11 +102,11 @@ mcp-server-webos discover     # which webOS TVs answer SSDP (TVs that are off do
 
 ### Choose the apps
 
-`select_source` only opens apps on the allow-list: a few defaults, plus yours. To see what a TV
+`webos_select_source` only opens apps on the allow-list: a few defaults, plus yours. To see what a TV
 actually has installed, and add from it:
 
 ```sh
-mcp-server-webos apps --tv "Office TV"                 # listed by group, with the name select_source will use
+mcp-server-webos apps --tv "Office TV"                 # listed by group, with the name webos_select_source will use
 mcp-server-webos apps --tv "Office TV" --add crunchyroll,"Photo & Video"
 mcp-server-webos apps --all-tvs --add-all             # every third-party app on any TV
 ```
@@ -107,7 +116,7 @@ mcp-server-webos apps --all-tvs --add-all             # every third-party app on
 | Allowed | already on the allow-list | |
 | Not allowed yet | third-party apps | `--add NAME` or `--add-all` |
 | LG's own apps | `com.webos.`, `com.palm.`, `com.lge.` ids (W-SYSTEM-APP-IDS) | `--add NAME` only |
-| Excluded | the web browser (it opens any URL), settings, LG's store (it installs apps), inputs (`select_source` handles them), Live TV, service menus | never |
+| Excluded | the web browser (it opens any URL), settings, LG's store (it installs apps), inputs (`webos_select_source` handles them), Live TV, service menus | never |
 
 It asks the TV over a short session with the stored key and changes nothing on it. New entries go
 into `config.json`'s `"apps"`; restart the server to use them. Run it as the service user on the
@@ -131,18 +140,35 @@ allow-list.
 }
 ```
 
-- `max_volume` (0-100, default 40): `set_volume` caps at it, per TV or for all.
+- `max_volume` (0-100, default 40): `webos_set_volume` caps at it, per TV or for all.
 - `volume_owner`: `auto` (from the TV's sound output: external outputs mean the receiver owns
   volume), `tv` (always allow), or `external` (never).
-- `apps`: extra apps for the allow-list, `name: app id` (ids from `list_sources` or a capture).
+- `apps`: extra apps for the allow-list, `name: app id` (ids from `webos_list_sources` or a capture).
 - `wol_broadcast` / `wol_port`: where magic packets go (default 255.255.255.255:9).
 - Hosts must be private IPv4 addresses. A name or alias that would mean two TVs is refused.
 
 ## Use it from Claude
 
+Claude Code:
+
 ```sh
-claude mcp add webos -- /path/to/.venv/bin/mcp-server-webos            # Claude Code, stdio
+claude mcp add webos -- uvx mcp-server-webos                # or the venv's bin/mcp-server-webos
 ```
+
+Claude Desktop (`claude_desktop_config.json`, then restart Claude Desktop):
+
+```json
+{
+  "mcpServers": {
+    "webos": {"command": "uvx", "args": ["mcp-server-webos"]}
+  }
+}
+```
+
+Claude Desktop doesn't start a login shell, so it may not find `uvx` on its `PATH`: if the server
+doesn't appear, put the full path from `which uvx` (`where uvx` on Windows) in `command`. With a
+virtualenv instead, `command` is the full path to its `bin/mcp-server-webos` and `args` is `[]`.
+Both read the TVs and keys that `pair` saved.
 
 ### Tools
 
@@ -150,32 +176,32 @@ Fourteen, on purpose: every tool definition costs context in every client.
 
 | Tool | Does | Annotations |
 | --- | --- | --- |
-| `list_tvs` | names and aliases `tv` accepts, model, platform | read-only |
-| `get_status` | power, what is in front, input, now playing, volume, sound output, capabilities and limitations; all TVs when `tv` is omitted | read-only |
-| `set_power` | on (Wake-on-LAN, confirmed) or off (standby); `tv="all"` for off | idempotent |
-| `set_screen` | blank the picture while sound plays, or bring it back | idempotent |
-| `list_sources` | allow-listed apps the TV has installed, and its HDMI inputs | read-only |
-| `select_source` | open an app or switch input, confirmed in front | idempotent |
-| `send_key` | one allow-listed remote key, up to 10 times | not idempotent |
-| `media_control` | play, pause, stop, rewind, fast-forward | not idempotent |
-| `set_volume` | 0-100, capped; refused when the receiver owns volume | idempotent |
-| `set_mute` | mute or unmute; same rule | idempotent |
-| `insert_text` | type into the focused *system* text field (LG's search); `replace` to overwrite it | not idempotent |
-| `delete_text` | delete characters before the cursor in that field | not idempotent |
-| `submit_text` | press the keyboard's Enter in that field (runs the search) | not idempotent |
-| `search_app` | open YouTube straight on its results for a query | idempotent |
+| `webos_list_tvs` | names and aliases `tv` accepts, model, platform | read-only |
+| `webos_get_status` | power, what is in front, input, now playing, volume, sound output, capabilities and limitations; all TVs when `tv` is omitted | read-only |
+| `webos_set_power` | on (Wake-on-LAN, confirmed) or off (standby); `tv="all"` for off | idempotent |
+| `webos_set_screen` | blank the picture while sound plays, or bring it back | idempotent |
+| `webos_list_sources` | allow-listed apps the TV has installed, and its HDMI inputs | read-only |
+| `webos_select_source` | open an app or switch input, confirmed in front | idempotent |
+| `webos_send_key` | one allow-listed remote key, up to 10 times | not idempotent |
+| `webos_media_control` | play, pause, stop, rewind, fast-forward | not idempotent |
+| `webos_set_volume` | 0-100, capped; refused when the receiver owns volume | idempotent |
+| `webos_set_mute` | mute or unmute; same rule | idempotent |
+| `webos_insert_text` | type into the focused *system* text field (LG's search); `replace` to overwrite it | not idempotent |
+| `webos_delete_text` | delete characters before the cursor in that field | not idempotent |
+| `webos_submit_text` | press the keyboard's Enter in that field (runs the search) | not idempotent |
+| `webos_search_app` | open YouTube straight on its results for a query | idempotent |
 
 ### Typing and searching
 
-Typing a search with `send_key` means walking an on-screen keyboard one arrow at a time. Where
-`get_status` lists `text_input`, `insert_text` types the whole string through the TV's input
+Typing a search with `webos_send_key` means walking an on-screen keyboard one arrow at a time. Where
+`webos_get_status` lists `text_input`, `webos_insert_text` types the whole string through the TV's input
 method (IME) service instead:
 
 ```
-get_status(tv="Office")                       # capabilities include text_input
-send_key(key="HOME") ... open LG's search     # the search box has the cursor
-insert_text(text="lofi beats", tv="Office")   # typed, and confirmed by the field's new length
-submit_text(tv="Office")                      # the results
+webos_get_status(tv="Office")                      # capabilities include text_input
+webos_send_key(key="HOME") ... open LG's search    # the search box has the cursor
+webos_insert_text(text="lofi beats", tv="Office")  # typed, and confirmed by the field's new length
+webos_submit_text(tv="Office")                     # the results
 ```
 
 What was seen on the three TVs (2026-11-09; details in HARDWARE_VALIDATION.md step 14):
@@ -184,21 +210,21 @@ What was seen on the three TVs (2026-11-09; details in HARDWARE_VALIDATION.md st
 | --- | --- | --- | --- |
 | Typing into LG's search | works, unconfirmed | works, confirmed | works, confirmed |
 | Typing into YouTube's or Netflix's search | refused | refused | refused |
-| `search_app` (YouTube) | refused | works | works |
+| `webos_search_app` (YouTube) | refused | works | works |
 
 - **Only system text fields take typed text.** YouTube and Netflix draw their own keyboards, and
   the TV answers "ok" to every IME call there (and with nothing focused at all) while typing
   nothing. So each text tool first asks the TV whether a system text field has focus (W-IME-FOCUS)
-  and refuses, sending nothing, when none does. The refusal points at `search_app` or `send_key`.
+  and refuses, sending nothing, when none does. The refusal points at `webos_search_app` or `webos_send_key`.
 - **Confirmed where the TV says.** The G1 and C5 report the field's length after every change, so
   the result says whether the text landed; the C7 doesn't, so its results carry an "unconfirmed"
   warning (W-IME-LENGTH).
-- **YouTube search by link, not by typing.** `search_app` launches YouTube with
+- **YouTube search by link, not by typing.** `webos_search_app` launches YouTube with
   `contentTarget=https://www.youtube.com/tv?q=<query>`, the only link shape that showed results
   (W-YOUTUBE-SEARCH). The server builds the link; the model only gives the query. webOS 3.x's
   YouTube ignores links, so it is refused on the C7; webOS 4 and 5 are untested and allowed.
 - Text is one line of printable characters, at most 200 (a query, 100); no newlines (use
-  `submit_text`). Typing shares `send_key`'s rate limit.
+  `webos_submit_text`). Typing shares `webos_send_key`'s rate limit.
 
 Nothing is `destructiveHint`: turning a TV off is undone by turning it on. Every action returns an
 `ActionResult`, the siblings' shape:
@@ -220,8 +246,8 @@ left out with the reason for each), `webos://apps` (the app allow-list). One pro
 - **No raw SSAP or luna calls.** The same reasoning as no `adb shell` on the Shield: one generic
   call would reach everything the TV exposes, including its internal settings services.
 - **No URL tools, and text only where decided:** no browser, no "play this URL". The two free-text
-  arguments are `insert_text`'s text, which only reaches a focused system text field, and
-  `search_app`'s query, which the server puts into a link it builds for an allow-listed app.
+  arguments are `webos_insert_text`'s text, which only reaches a focused system text field, and
+  `webos_search_app`'s query, which the server puts into a link it builds for an allow-listed app.
 - **Keys are an allow-list.** `POWER` (a toggle), the `IN_START`/`EZ_ADJUST` service menus,
   settings menus, the volume keys (they would bypass the cap) and app shortcuts (they would
   bypass the app allow-list) are left out; `webos://keys` lists why.
@@ -245,7 +271,7 @@ every action returns `outcome: "dry_run"` with what it would have sent.
 Each TV has one long-lived WebSocket (the TV pushes changes over subscriptions) and a supervisor:
 
 - **Off:** a TV that is off has no socket. The supervisor retries every ~10 s, so a TV turned on
-  by its remote shows up within ~10 s. `get_status` on a stale TV first makes one connect attempt
+  by its remote shows up within ~10 s. `webos_get_status` on a stale TV first makes one connect attempt
   of at most 3 s, then answers with `stale`, `as_of` and `error`.
 - **Stale key:** if the TV no longer accepts the stored key (a reset, or a firmware update), it
   wants to show its pairing dialog. The server hangs up at once, marks the TV `needs_pairing` and
@@ -367,8 +393,8 @@ JWTs and certificates always are. `--debug` (`WEBOS_DEBUG=1`) adds aiowebostv's 
 ```sh
 pip install -e ".[dev]" && pytest && ruff check . && ruff format --check . && mypy
 mcp-server-webos simulate --profile g1 --config-dir /tmp/sim --paired       # then, in another terminal:
-WEBOS_CONFIG_DIR=/tmp/sim mcp-server-webos call get_status
-WEBOS_CONFIG_DIR=/tmp/sim mcp-server-webos call select_source source=netflix
+WEBOS_CONFIG_DIR=/tmp/sim mcp-server-webos call webos_get_status
+WEBOS_CONFIG_DIR=/tmp/sim mcp-server-webos call webos_select_source source=netflix
 ```
 
 The simulator (`src/webos_mcp/sim/`) speaks SSAP over real WebSockets: the hello, registration
@@ -430,7 +456,7 @@ says which step confirms each.
 | `W-VOLUME-ARC` | medium | simulator-only |
 | `W-APP-IDS` | low | simulator-only |
 | `W-SYSTEM-APP-IDS` | medium | simulator-only |
-| `W-INPUT-IDS` | medium | simulator-only |
+| `W-INPUT-IDS` | medium | hardware-verified |
 | `W-SSDP` | medium | hardware-verified |
 | `W-IME-FOCUS` | high | hardware-verified |
 | `W-IME-TEXT` | high | hardware-verified |

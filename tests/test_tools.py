@@ -69,6 +69,13 @@ EXPECTED = {
 }
 
 
+async def test_initialize_reports_the_package_version(two_tvs):
+    from webos_mcp import __version__
+
+    c, *_ = two_tvs
+    assert c.server_info.version == __version__
+
+
 async def test_tool_names(two_tvs):
     c, *_ = two_tvs
     assert set(await tools(c)) == EXPECTED
@@ -237,7 +244,8 @@ async def test_dry_run(home, tvs, fast_clients, monkeypatch):
 
 async def test_no_tvs_configured(home, fast_clients):
     async with Client(server.mcp) as c:
-        assert ok(await c.call_tool("webos_get_status", {})) == {"tvs": []}
+        status = ok(await c.call_tool("webos_get_status", {}))
+        assert status["tvs"] == [] and "pair --host" in status["hint"]
         result = await c.call_tool("webos_set_power", {"state": "off"})
         assert result.is_error and "No TVs are configured" in text(result)
 

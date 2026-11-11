@@ -11,23 +11,23 @@ connector name (e.g. `webos`).
 | Office | 65" C5 (webOS 25/26) | sound to the receiver over eARC: volume_owner "external" |
 | Bedroom | 65" C7 (webOS 3.5) | own speakers; now_playing always null |
 
-(Expected values; confirm with `get_status` and update after the hardware pass.)
+(Expected values; confirm with `webos_get_status` and update after the hardware pass.)
 
 ## Tools, and what each confirms
 
 | Tool | Use it to | Confirms |
 | --- | --- | --- |
-| `get_status(tv)` | check first, every time | power (on, screen_off, standby, off), app or input in front, volume_owner, capabilities |
-| `set_power(state, tv)` | on (Wake-on-LAN) / off; `tv="all"` for off | on: that the TV answered within 45 s, else a warning |
-| `select_source(source, tv)` | an app ("netflix") or an input ("Onkyo") | that it is in front |
-| `list_sources(tv)` | see what select_source accepts | an app that's installed but missing here isn't allow-listed: tell the user to run `mcp-server-webos apps` |
-| `send_key(key, repeat, tv)` | navigate (UP/DOWN/LEFT/RIGHT/ENTER/BACK/HOME) | sent only; you can't see the screen |
-| `media_control(action, tv)` | play/pause/stop/rewind/fast_forward | sent only |
-| `set_screen(state, tv)` | picture off for music, keep sound | the power state changes |
-| `set_volume` / `set_mute` | only when volume_owner is "tv" | |
-| `insert_text(text, replace, tv)` | type into a focused **system** field (LG's search) instead of walking a keyboard with send_key | refuses if no system field has focus; confirmed by length on the G1 and C5, unconfirmed on the C7 |
-| `delete_text(count, tv)` / `submit_text(tv)` | backspace / Enter in that field | same rule |
-| `search_app(app="youtube", query, tv)` | "search YouTube for …" | YouTube in front; not on the C7 (webOS 3.9 ignores search links) |
+| `webos_get_status(tv)` | check first, every time | power (on, screen_off, standby, off), app or input in front, volume_owner, capabilities |
+| `webos_set_power(state, tv)` | on (Wake-on-LAN) / off; `tv="all"` for off | on: that the TV answered within 45 s, else a warning |
+| `webos_select_source(source, tv)` | an app ("netflix") or an input ("Onkyo") | that it is in front |
+| `webos_list_sources(tv)` | see what webos_select_source accepts | an app that's installed but missing here isn't allow-listed: tell the user to run `mcp-server-webos apps` |
+| `webos_send_key(key, repeat, tv)` | navigate (UP/DOWN/LEFT/RIGHT/ENTER/BACK/HOME) | sent only; you can't see the screen |
+| `webos_media_control(action, tv)` | play/pause/stop/rewind/fast_forward | sent only |
+| `webos_set_screen(state, tv)` | picture off for music, keep sound | the power state changes |
+| `webos_set_volume` / `webos_set_mute` | only when volume_owner is "tv" | |
+| `webos_insert_text(text, replace, tv)` | type into a focused **system** field (LG's search) instead of walking a keyboard with webos_send_key | refuses if no system field has focus; confirmed by length on the G1 and C5, unconfirmed on the C7 |
+| `webos_delete_text(count, tv)` / `webos_submit_text(tv)` | backspace / Enter in that field | same rule |
+| `webos_search_app(app="youtube", query, tv)` | "search YouTube for …" | YouTube in front; not on the C7 (webOS 3.9 ignores search links) |
 
 ## House rules this server already enforces
 
@@ -39,9 +39,9 @@ connector name (e.g. `webos`).
 
 - In a room whose hub activity (Harmony, Sofabaton) owns power and input, let the activity do
   those; use this server for apps, keys and status. Don't mix a hub's IR power toggle with
-  `set_power` in the same workflow.
-- "off" in get_status means not answering: off, or off the network. `set_power on` is the fix
+  `webos_set_power` in the same workflow.
+- "off" in webos_get_status means not answering: off, or off the network. `webos_set_power on` is the fix
   for the first; doctor for the second.
 - now_playing has the app and play state only; webOS doesn't report titles.
-- Searching: YouTube → `search_app`. LG's own search → `insert_text` + `submit_text`. Netflix and
-  other apps with their own keyboard → `send_key` on their keyboard (insert_text refuses there).
+- Searching: YouTube → `webos_search_app`. LG's own search → `webos_insert_text` + `webos_submit_text`. Netflix and
+  other apps with their own keyboard → `webos_send_key` on their keyboard (webos_insert_text refuses there).

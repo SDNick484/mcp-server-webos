@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Hardware validation checklist
+    url: https://github.com/SDNick484/mcp-server-webos/blob/main/HARDWARE_VALIDATION.md
+    about: Step-by-step checks to run on your TV before (or instead of) filing a hardware report.
+  - name: What each protocol detail is based on
+    url: https://github.com/SDNick484/mcp-server-webos/blob/main/src/webos_mcp/assumptions.py
+    about: Every assumption about webOS, its source, and whether a real TV has confirmed it.

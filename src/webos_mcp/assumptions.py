@@ -361,6 +361,7 @@ ASSUMPTIONS: tuple[Assumption, ...] = (
         "switching to one brings that appId to the foreground.",
         "lgtv-mcp's fakes; Home Assistant's source handling",
         "medium",
+        status="hardware-verified",
         note="2026-10-17, Office C5: four inputs HDMI_1..4 with the user's label on HDMI_2 ('Onkyo Home Theater', "
         "connected), and tv/switchInput HDMI_2 brought com.webos.app.hdmi2 to the front. The G1 and C7 are "
         "not tried yet.",
