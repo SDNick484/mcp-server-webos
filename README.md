@@ -15,7 +15,7 @@ a wire-level simulator, an assumptions registry, Streamable HTTP behind Cloudfla
 OpenRC service for an Alpine LXC.
 
 > **Status: built and tested against a simulator only.** Nothing here has run against a real TV
-> yet. [HARDWARE_VALIDATION.md](HARDWARE_VALIDATION.md) is the checklist that changes that, and
+> yet. [HARDWARE_VALIDATION.md](https://github.com/SDNick484/mcp-server-webos/blob/main/HARDWARE_VALIDATION.md) is the checklist that changes that, and
 > the table at the end of this README says what has been confirmed.
 
 ## The TVs it targets
@@ -33,7 +33,7 @@ A TV usually sits on one HDMI input from an Onkyo receiver, and **volume belongs
 receiver**: when a TV's sound goes out over eARC/ARC, this server refuses to change its volume and
 points at the receiver's own server instead. Going through the TV would bypass the receiver
 server's volume caps (the TV forwards its volume to the receiver over HDMI-CEC). A separate
-home-theater Skill coordinates the servers; [docs/skill-webos.md](docs/skill-webos.md) is this
+home-theater Skill coordinates the servers; [docs/skill-webos.md](https://github.com/SDNick484/mcp-server-webos/blob/main/docs/skill-webos.md) is this
 server's cheat sheet for it.
 
 ### webOS 26 and pairing
@@ -48,8 +48,16 @@ before it updates.
 ## Install
 
 ```sh
+python -m venv ~/.venvs/webos && . ~/.venvs/webos/bin/activate
+pip install mcp-server-webos
+```
+
+From source instead (for the newest code, or to run the tests):
+
+```sh
 git clone https://github.com/SDNick484/mcp-server-webos.git && cd mcp-server-webos
-python -m venv .venv && . .venv/bin/activate && pip install -e .
+python -m venv .venv && . .venv/bin/activate
+pip install -e ".[dev]" && pytest
 ```
 
 Python 3.11 or newer. Every dependency ships a musl wheel, so Alpine needs no compiler.
@@ -224,7 +232,7 @@ left out with the reason for each), `webos://apps` (the app allow-list). One pro
 - **Screen off uses standbyMode "active" only.** "passive" can't be undone without unplugging the
   TV; it isn't an argument anywhere.
 
-[docs/OUT_OF_SCOPE.md](docs/OUT_OF_SCOPE.md) lists the rest (picture settings, channels, LG's IP
+[docs/OUT_OF_SCOPE.md](https://github.com/SDNick484/mcp-server-webos/blob/main/docs/OUT_OF_SCOPE.md) lists the rest (picture settings, channels, LG's IP
 control) and why.
 
 ### Dry run

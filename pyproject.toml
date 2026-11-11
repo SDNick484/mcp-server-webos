@@ -1,20 +1,26 @@
 [build-system]
-requires = ["setuptools>=68"]
+requires = ["setuptools>=77"]  # 77: SPDX `license` strings (PEP 639)
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "mcp-server-webos"
-version = "0.1.0"
+dynamic = ["version"]  # from webos_mcp.__version__ (below)
 description = "MCP server for LG webOS TVs (SSAP over WebSocket, via aiowebostv) with a one-time pairing CLI"
 readme = "README.md"
-license = { text = "MIT" }
+license = "MIT"
+license-files = ["LICENSE"]
 authors = [{ name = "Nicholas E. Andrade" }]
 requires-python = ">=3.11"
 keywords = ["mcp", "mcp-server", "lg", "webos", "lg-tv", "oled", "home-automation"]
 classifiers = [
     "Development Status :: 2 - Pre-Alpha",
-    "License :: OSI Approved :: MIT License",
+    "Framework :: AsyncIO",
+    "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Topic :: Home Automation",
 ]
 dependencies = [
@@ -32,12 +38,16 @@ dependencies = [
 [project.urls]
 Homepage = "https://github.com/SDNick484/mcp-server-webos"
 Issues = "https://github.com/SDNick484/mcp-server-webos/issues"
+Changelog = "https://github.com/SDNick484/mcp-server-webos/blob/main/CHANGELOG.md"
 
 [project.optional-dependencies]
 dev = ["pytest>=8", "anyio>=4", "ruff>=0.6", "mypy>=1.11", "httpx2"]
 
 [project.scripts]
 mcp-server-webos = "webos_mcp.cli:main"
+
+[tool.setuptools.dynamic]
+version = { attr = "webos_mcp.__version__" }
 
 [tool.setuptools.packages.find]
 where = ["src"]
