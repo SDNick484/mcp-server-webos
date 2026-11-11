@@ -25,13 +25,13 @@ import json
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from typing import Annotated, Literal
+from typing import Annotated, Literal, NotRequired
 
 from mcp.server import MCPServer
 from pydantic import Field
 from typing_extensions import TypedDict
 
-from . import keystore, tvs
+from . import __version__, keystore, tvs
 from .client import MAX_DELETE, MAX_QUERY, MAX_TEXT, MEDIA_ACTIONS, SEARCH_LINKS, Result, Status, TvClient
 from .config import ALLOWED_KEYS, DEFAULT_APPS, LEFT_OUT_KEYS, KeyName, Settings, load_settings
 from .tools import ACT, ACT_IDEMPOTENT, READ_ONLY
@@ -85,6 +85,7 @@ async def lifespan(_server: MCPServer) -> AsyncIterator[None]:
 # typically add it to the model's context as guidance for using these tools.
 mcp = MCPServer(
     "webos",
+    version=__version__,  # serverInfo.version in initialize, so a bug report says which build answered
     instructions=(
         "Physical role: Display & Video Sink. Controls LG webOS TVs. Connects downstream of the AVR (Onkyo) "
         "or switches video inputs directly; delegates master volume control to the AVR when volume_owner "
@@ -140,6 +141,7 @@ TvArg = Annotated[
 
 class StatusReport(TypedDict):
     tvs: list[Status]
+    hint: NotRequired[str]  # only with no TV configured: how to pair one
 
 
 class TvSummary(TypedDict):
@@ -205,7 +207,11 @@ async def webos_get_status(tv: TvArg = None) -> StatusReport:
     chosen = reg.clients if tv is None else [reg.pick(tv)]
     for c in chosen:
         await c.refresh()  # one bounded attempt on a stale TV, so the answer is fresh
-    return {"tvs": [c.snapshot() for c in chosen]}
+    report: StatusReport = {"tvs": [c.snapshot() for c in chosen]}
+    if not reg.clients:
+        # A first run: an empty list alone reads as "you have no TVs", so say how to pair one.
+        report["hint"] = tvs.NO_TVS
+    return report
 
 
 @mcp.tool(title="Turn a TV on or off", annotations=ACT_IDEMPOTENT)

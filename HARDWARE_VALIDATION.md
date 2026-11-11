@@ -1,7 +1,8 @@
 # Hardware validation (LG webOS TVs)
 
-Everything in this repo was built away from the TVs and is **verified against the simulator
-only** until you run the step that covers it. The simulator (`src/webos_mcp/sim/`) is a
+Everything in this repo was built away from the TVs. Much of it has since run on all three
+(2026-10-14 to 2026-11-10; the tables below record what was seen), and the rest is **verified
+against the simulator only** until you run the step that covers it. The simulator (`src/webos_mcp/sim/`) is a
 wire-level fake that the real aiowebostv library pairs and connects with; what it answers comes
 from other people's captures and from aiowebostv's source, and each step below names the
 assumptions it confirms (ids, claims and sources are in `src/webos_mcp/assumptions.py`).
@@ -11,7 +12,7 @@ Three TVs, one column each in every table:
 | | Bedroom | Family Room | Office |
 | --- | --- | --- | --- |
 | Model | OLED65C7P-U (2017) | OLED77G1PUA (2021) | OLED65C5PUA (2025) |
-| Platform | webOS 3.5 | webOS 6.0 | webOS 25, webOS 26 on offer |
+| Platform | webOS 3.5 (reports 3.9.3) | webOS 6.0 (reports 6.5.3) | webOS 25 (reports 10.3.1), webOS 26 on offer |
 | Firmware HA last saw | 06.10.65 | 03.53.45 | 33.31.61 |
 
 Plan on about an hour and a half for all three. `doctor` points at steps 3, 4, 6 and 11 by
@@ -22,22 +23,22 @@ you saw in `assumptions.py` (see "Recording results" at the end).
 
 | Feature | Status | Step |
 | --- | --- | --- |
-| `pair`: hello first, 60 s for OK on the TV, MACs and certificate saved | verified against simulator only | 3 |
-| `doctor` (config, ports, hello, session, permissions, Wake-on-LAN, SSDP) | verified against simulator only | 4 |
-| `get_status`: power, input, now playing, sound output, capabilities | verified against simulator only | 5 |
-| `set_power`: off from on only; on by Wake-on-LAN, confirmed | verified against simulator only | 6 |
-| `set_screen` with standbyMode "active" | verified against simulator only | 7 |
-| `list_sources` / `select_source` (allow-listed apps, HDMI inputs, never guess) | verified against simulator only | 8 |
-| `send_key` (allow-list), `media_control` | verified against simulator only | 9 |
-| `set_volume` / `set_mute`: per-TV cap, refused when the receiver owns volume | verified against simulator only | 10 |
+| `pair`: hello first, 60 s for OK on the TV, MACs and certificate saved | verified on hardware (2026-10-16/17, all three TVs; the unanswered-dialog timeout and webOS 26 not yet) | 3 |
+| `doctor` (config, ports, hello, session, permissions, Wake-on-LAN, SSDP) | verified against simulator only; on hardware so far: 2026-10-16, G1 and C5 | 4 |
+| `webos_get_status`: power, input, now playing, sound output, capabilities | verified against simulator only; on hardware so far (2026-10-17): power states on all three, now playing on the C5, volume owner on all three | 5 |
+| `webos_set_power`: off from on only; on by Wake-on-LAN, confirmed | verified against simulator only; on hardware so far (2026-10-17, C5 only): off, and woken from the LXC 2 of 2 | 6 |
+| `webos_set_screen` with standbyMode "active" | verified on hardware (2026-10-17, C7 and C5; G1 not yet) | 7 |
+| `webos_list_sources` / `webos_select_source` (allow-listed apps, HDMI inputs, never guess) | verified against simulator only; on hardware so far: 2026-10-14/17, C5: apps and an HDMI input | 8 |
+| `webos_send_key` (allow-list), `webos_media_control` | verified against simulator only; on hardware so far: 2026-10-17, C5 in Netflix | 9 |
+| `webos_set_volume` / `webos_set_mute`: per-TV cap, refused when the receiver owns volume | verified against simulator only; on hardware so far: the refusal, on the C5; the cap not yet | 10 |
 | Stale key: one dialog, then needs_pairing; re-pair picked up live | verified against simulator only | 11 |
 | Rediscovery by deviceUUID after an address change | verified against simulator only | 11 |
 | A refused pointer socket costs only the keys (compat.py) | verified against simulator only | 4 |
-| `capture` and the contract tests | verified against simulator only | 1 |
+| `capture` and the contract tests | verified on hardware (2026-10-16/17, all three TVs captured; contract tests pass) | 1 |
 | Streamable HTTP + Cloudflare Access; OpenRC service on Alpine | verified on hardware (2026-10-14, CT 210, Office TV; mobile app not yet) | 13 |
 | Log redaction (addresses, MACs, serials, UUIDs; keys always) | verified against simulator only | 4 |
-| IME calls and focus detection behind `insert_text` / `delete_text` / `submit_text` | verified on hardware (2026-11-09, all three TVs, by a spike script; the tools themselves not yet) | 14 |
-| `search_app` (YouTube search link) | verified on hardware (2026-11-09, G1 and C5 work, C7 refused; the tool itself not yet) | 14 |
+| IME calls and focus detection behind `webos_insert_text` / `webos_delete_text` / `webos_submit_text` | verified on hardware (2026-11-09 by a spike script, 2026-11-10 through the tools; all three TVs) | 14 |
+| `webos_search_app` (YouTube search link) | verified on hardware (2026-11-10 through the tool: G1 and C5 show results, C7 refused) | 14 |
 
 ## Before you start
 
@@ -48,7 +49,6 @@ you saw in `assumptions.py` (see "Recording results" at the end).
 
 ```sh
 git clone https://github.com/SDNick484/mcp-server-webos.git && cd mcp-server-webos
-git checkout hardware-free
 python -m venv .venv && . .venv/bin/activate
 pip install -e ".[dev]" && pytest -q        # all green before you start
 export WEBOS_CONFIG_DIR=~/.config/mcp-server-webos-validation   # keep this run's pairing apart
@@ -138,11 +138,11 @@ mcp-server-webos doctor --no-redact # addresses shown (keys never are)
 ## 5. Status and pushed state
 
 ```sh
-mcp-server-webos call get_status tv=Bedroom
+mcp-server-webos call webos_get_status tv=Bedroom
 ```
 
 Change things with the TV's own remote while `mcp-server-webos serve` runs under Claude Code (or
-call `get_status` repeatedly): the values should follow within a second.
+call `webos_get_status` repeatedly): the values should follow within a second.
 
 | Check | Bedroom C7 | Family Room G1 | Office C5 |
 | --- | --- | --- | --- |
@@ -155,14 +155,14 @@ call `get_status` repeatedly): the values should follow within a second.
 ## 6. Power off and Wake-on-LAN
 
 ```sh
-mcp-server-webos call set_power state=off tv=Bedroom
-mcp-server-webos call get_status tv=Bedroom     # power: standby (socket up) or off (gone)
-mcp-server-webos call set_power state=on tv=Bedroom
+mcp-server-webos call webos_set_power state=off tv=Bedroom
+mcp-server-webos call webos_get_status tv=Bedroom     # power: standby (socket up) or off (gone)
+mcp-server-webos call webos_set_power state=on tv=Bedroom
 ```
 
 - Off: with Quick Start+/Always Ready on, does the TV stay reachable in "Active Standby"?
   Off, does the connection close? (W-STANDBY-SOCKET)
-- A second `set_power off` must say "unchanged" and send nothing (W-OFF-GUARD).
+- A second `webos_set_power off` must say "unchanged" and send nothing (W-OFF-GUARD).
 - On: time from the call to "is on" in `detail` (W-WAKE-TIME). If `warnings` says unconfirmed,
   check step 2's settings, then wired vs Wi-Fi (W-WOL, W-WOL-PATH).
 - From the Alpine LXC as well: `doctor` shows the local address the packet goes out from; it
@@ -183,8 +183,8 @@ mcp-server-webos call set_power state=on tv=Bedroom
 ## 7. Screen off and on
 
 ```sh
-mcp-server-webos call set_screen state=off tv="Family Room"   # sound continues, picture off
-mcp-server-webos call set_screen state=on tv="Family Room"
+mcp-server-webos call webos_set_screen state=off tv="Family Room"   # sound continues, picture off
+mcp-server-webos call webos_set_screen state=on tv="Family Room"
 ```
 
 | Check | Bedroom C7 | Family Room G1 | Office C5 |
@@ -196,9 +196,9 @@ mcp-server-webos call set_screen state=on tv="Family Room"
 ## 8. Sources
 
 ```sh
-mcp-server-webos call list_sources tv=Office
-mcp-server-webos call select_source source=netflix tv=Office
-mcp-server-webos call select_source source=Onkyo tv=Office     # your label for the receiver's input
+mcp-server-webos call webos_list_sources tv=Office
+mcp-server-webos call webos_select_source source=netflix tv=Office
+mcp-server-webos call webos_select_source source=Onkyo tv=Office     # your label for the receiver's input
 ```
 
 - `mcp-server-webos apps --all-tvs` lists every installed app by group. Compare with the defaults
@@ -212,15 +212,15 @@ mcp-server-webos call select_source source=Onkyo tv=Office     # your label for 
 | Default app ids that match (W-APP-IDS) | | | 2026-10-14: 5 of 7 (no plex, spotify) |
 | `apps` groups LG's apps as system or excluded (W-SYSTEM-APP-IDS) | | | |
 | Inputs listed with your labels (W-INPUT-IDS) |  |  | HDMI_1..4; HDMI_2 'Onkyo Home Theater' |
-| select_source confirms an app |  |  | netflix |
-| select_source confirms an input |  |  | Onkyo Home Theater |
+| webos_select_source confirms an app |  |  | netflix |
+| webos_select_source confirms an input |  |  | Onkyo Home Theater |
 
 ## 9. Keys and media controls
 
 ```sh
-mcp-server-webos call send_key key=HOME tv=Bedroom
-mcp-server-webos call send_key key=DOWN repeat=3 tv=Bedroom
-mcp-server-webos call media_control action=pause tv=Bedroom   # with something playing
+mcp-server-webos call webos_send_key key=HOME tv=Bedroom
+mcp-server-webos call webos_send_key key=DOWN repeat=3 tv=Bedroom
+mcp-server-webos call webos_media_control action=pause tv=Bedroom   # with something playing
 ```
 
 | Check | Bedroom C7 | Family Room G1 | Office C5 |
@@ -231,23 +231,23 @@ mcp-server-webos call media_control action=pause tv=Bedroom   # with something p
 
 ## 10. Volume and the receiver
 
-With the receiver on eARC/ARC, `get_status` should show `volume_owner: "external"`, and
-`set_volume` must refuse, naming the receiver. The refusal exists because the TV forwards volume
+With the receiver on eARC/ARC, `webos_get_status` should show `volume_owner: "external"`, and
+`webos_set_volume` must refuse, naming the receiver. The refusal exists because the TV forwards volume
 to the receiver over HDMI-CEC (W-VOLUME-ARC): check that this is really what happens by pressing
 volume on the TV's own remote and watching the receiver.
 
 | Check | Bedroom C7 | Family Room G1 | Office C5 |
 | --- | --- | --- | --- |
-| volume_owner as expected (W-SOUND-OUTPUT) | tv | external | external, set_volume refused |
+| volume_owner as expected (W-SOUND-OUTPUT) | tv | external | external, webos_set_volume refused |
 | TV remote volume moves the receiver's (W-VOLUME-ARC) | | | |
-| On TV speakers: set_volume capped at max_volume | | | |
+| On TV speakers: webos_set_volume capped at max_volume | | | |
 
 ## 11. Reconnects, re-pairing and rediscovery
 
 Run the server (`mcp-server-webos serve --http --insecure-no-auth --bind 127.0.0.1` or under Claude
 Code) and watch its log:
 
-- Turn a TV off and on with its own remote: one log line each way, and `get_status` fresh within
+- Turn a TV off and on with its own remote: one log line each way, and `webos_get_status` fresh within
   ~10 s of it coming back.
 - Stale key while running (as in step 3): **one** dialog on the TV, then `needs_pairing`, and no
   more dialogs however long you wait (W-STALE-KEY). Run `pair` in another terminal: the running
@@ -257,7 +257,7 @@ Code) and watch its log:
   config.json should hold the new one (W-UUID-STABLE, W-SSDP). `mcp-server-webos discover` lists
   what answers SSDP.
 - After the C5 takes webOS 26 (step 1): does the old key still work (W-KEY-SURVIVES)? If not,
-  `get_status` says needs_pairing; re-pair. Does the TV ever answer with the blacklisted-certificate
+  `webos_get_status` says needs_pairing; re-pair. Does the TV ever answer with the blacklisted-certificate
   403 (W-SIGNED-403)? It shouldn't: this server never sends a signed manifest.
 
 | Check | Bedroom C7 | Family Room G1 | Office C5 |
@@ -299,10 +299,10 @@ is `http://192.168.1.174:8715` and `MCP_HTTP_BIND=192.168.1.174`; `MCP_PUBLIC_HO
 | --- | --- |
 | Service starts, `/healthz` answers | 2026-10-14: yes (CT 210, bound to 192.168.1.174) |
 | Through Access from Claude Code | 2026-10-14: yes, after the two fixes below |
-| Through Access from the Claude app connector | 2026-10-14: yes (`list_tvs`, `list_sources` on Office TV) |
+| Through Access from the Claude app connector | 2026-10-14: yes (`webos_list_tvs`, `webos_list_sources` on Office TV) |
 | Through Access from the mobile app | |
 | doctor as the service user passes for all three TVs | |
-| Wake-on-LAN from the LXC (step 6) | |
+| Wake-on-LAN from the LXC (step 6) | 2026-10-17: Office C5, 2 of 2 |
 
 What it took on 2026-10-14, in the order it showed up (the README's "When it doesn't connect"
 table has all of them):
@@ -315,7 +315,7 @@ table has all of them):
 ## 14. Text input and app search
 
 First seen 2026-11-09 with a throwaway spike script (not in the repo) that made the same SSAP calls
-the tools now make; the tools themselves still need a run through the MCP layer. With the TV on LG's
+the tools now make; the tools themselves ran through the MCP layer on 2026-11-10 (last table row). With the TV on LG's
 search box (the magnifier), then on YouTube's search screen:
 
 ```sh
@@ -340,7 +340,7 @@ mcp-server-webos call webos_search_app app=youtube "query=lofi beats" tv=Office
   you're in LG search, start from Home.
 - The C5's connection on 3001 sometimes hung more than 8 s before the hello (about 1 call in 10,
   2026-11-10), and `call`, which connects afresh each time, then reports "isn't answering". Seen
-  only on text calls (get_status: 0 of 8), but it hung before anything was sent, so the call itself
+  only on text calls (webos_get_status: 0 of 8), but it hung before anything was sent, so the call itself
   can't be the cause. Run the call again.
 - Still open: whether holding the subscription (only for the length of a call) affects the TV's own
   on-screen keyboard for someone using the remote at the same time; and webOS 4 and 5, which are
@@ -357,7 +357,7 @@ mcp-server-webos call webos_search_app app=youtube "query=lofi beats" tv=Office
 | Enter pushes focus false (W-IME-LENGTH) | yes | yes | yes |
 | YouTube `tv?q=` link shows results (W-YOUTUBE-SEARCH) | no, YouTube home | yes | yes |
 | YouTube `v=<id>` link plays the video | no, even from a cold launch | yes | |
-| The tools through `call` | 2026-11-10 all, "unconfirmed" warnings as designed; refusals on HDMI1 and for search_app | 2026-11-10 all, no warnings; refusal in YouTube; search_app results | 2026-11-10 insert, delete, submit; replace only into an empty field; refusals on Home and in YouTube; search_app results |
+| The tools through `call` | 2026-11-10 all, "unconfirmed" warnings as designed; refusals on HDMI1 and for webos_search_app | 2026-11-10 all, no warnings; refusal in YouTube; webos_search_app results | 2026-11-10 insert, delete, submit; replace only into an empty field; refusals on Home and in YouTube; webos_search_app results |
 
 ## Recording results
 

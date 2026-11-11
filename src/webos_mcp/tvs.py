@@ -29,6 +29,9 @@ T = TypeVar("T", bound=HasSettings)
 
 ALL = "all"
 
+# Shared by the actions' refusal and webos_get_status's hint, so a first run says the same thing either way.
+NO_TVS = "No TVs are configured. Pair one with `mcp-server-webos pair --host <ip> --name <room>`."
+
 
 def names(items: Sequence[HasSettings]) -> str:
     return ", ".join(i.tv.describe() for i in items)
@@ -37,7 +40,7 @@ def names(items: Sequence[HasSettings]) -> str:
 def pick(items: Sequence[T], ref: str | None) -> T:
     """The one TV ref means, or a WebOsError saying why there isn't one."""
     if not items:
-        raise WebOsError("No TVs are configured. Pair one with `mcp-server-webos pair --host <ip> --name <room>`.")
+        raise WebOsError(NO_TVS)
     if ref is None or not ref.strip():
         if len(items) == 1:
             return items[0]
