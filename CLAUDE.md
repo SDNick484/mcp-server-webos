@@ -83,6 +83,13 @@ Built entirely away from the TVs: every assumption is `simulator-only` until HAR
 is run. Treat that file's results, once recorded in `assumptions.py`, as authoritative over
 anything written here.
 
+## Releases
+
+Version lives only in `src/webos_mcp/__init__.py` (`pyproject.toml` reads it). Bump it and add a
+CHANGELOG.md section for every release: pip treats a same-version install as already satisfied. Pushing
+tag `vX.Y.Z` runs `.github/workflows/release.yml` (PyPI trusted publishing, then a GitHub release).
+CONTRIBUTING.md has the steps and the one-time PyPI setup.
+
 ## Commands
 
 ```sh
