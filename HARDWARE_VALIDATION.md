@@ -334,6 +334,14 @@ mcp-server-webos call webos_search_app app=youtube "query=lofi beats" tv=Office
 - The field's reported length confirms each change (W-IME-LENGTH).
 - YouTube opens results for `https://www.youtube.com/tv?q=` (W-YOUTUBE-SEARCH). `#/search?q=` and
   `/results?search_query=` opened an unrelated video on the G1.
+- On the G1 (2026-11-10), the first try at LG search left YouTube in front and the keyboard
+  subscription answered with no `currentWidget`, so every text tool refused; from Home, then
+  Search, the field had focus and all four calls went through. If they refuse when you think
+  you're in LG search, start from Home.
+- The C5's connection on 3001 sometimes hung more than 8 s before the hello (about 1 call in 10,
+  2026-11-10), and `call`, which connects afresh each time, then reports "isn't answering". Seen
+  only on text calls (get_status: 0 of 8), but it hung before anything was sent, so the call itself
+  can't be the cause. Run the call again.
 - Still open: whether holding the subscription (only for the length of a call) affects the TV's own
   on-screen keyboard for someone using the remote at the same time; and webOS 4 and 5, which are
   between the C7 that ignores search links and the G1 that honors them.
@@ -349,7 +357,7 @@ mcp-server-webos call webos_search_app app=youtube "query=lofi beats" tv=Office
 | Enter pushes focus false (W-IME-LENGTH) | yes | yes | yes |
 | YouTube `tv?q=` link shows results (W-YOUTUBE-SEARCH) | no, YouTube home | yes | yes |
 | YouTube `v=<id>` link plays the video | no, even from a cold launch | yes | |
-| The tools through `call` | | | |
+| The tools through `call` | 2026-11-10 all, "unconfirmed" warnings as designed; refusals on HDMI1 and for search_app | 2026-11-10 all, no warnings; refusal in YouTube; search_app results | 2026-11-10 insert, delete, submit; replace only into an empty field; refusals on Home and in YouTube; search_app results |
 
 ## Recording results
 
