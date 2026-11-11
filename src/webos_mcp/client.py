@@ -99,6 +99,7 @@ MAX_DELETE = 100
 MAX_QUERY = 100
 # A dry run sends nothing, and subscribing to the keyboard is still a request to the TV
 UNCHECKED_FOCUS = "not checked in a dry run: whether a text field has focus"
+HOME_APP = "com.webos.app.home"  # the home screen; not a launch point, so it has no title (G1, C5)
 
 # App searches by deep link: the server owns the URL, the model only supplies the query, so this is
 # not a URL tool. Only apps in this table, and only when allow-listed and installed. ASSUMPTION
@@ -929,7 +930,10 @@ class TvClient:
 
     def _require_field(self, kb: _Keyboard) -> None:
         if not kb.focused:
-            front = self._app_title(self.cache.app_id) or self.cache.app_id or "the current screen"
+            app_id = self.cache.app_id
+            front = self._app_title(app_id) or app_id or "the current screen"
+            if app_id == HOME_APP:
+                front = "the home screen"
             raise WebOsError(
                 f"No text field has focus on {self.name} ({front} is in front), so nothing would be typed. "
                 "Apps that draw their own keyboard, like YouTube and Netflix, never have one: for YouTube use "

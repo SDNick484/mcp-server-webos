@@ -419,6 +419,14 @@ async def test_stub_no_focus_means_refused_and_nothing_sent(first):
     assert stub.sent == [] and stub.unsubscribed == ["com.webos.service.ime/registerRemoteKeyboard"]
 
 
+async def test_stub_refusal_names_the_home_screen():
+    # Not a launch point, so the app list has no title for it (seen on the C5, 2026-11-10)
+    c = stub_client(StubSsap({"subscribed": True}))
+    c.cache.app_id = "com.webos.app.home"
+    with pytest.raises(WebOsError, match="No text field has focus on Den \\(the home screen is in front\\)"):
+        await c.insert_text("hello", replace=False)
+
+
 async def test_stub_confirms_by_length():
     pushed = {"currentWidget": {"focus": True, "surroundingTextLength": 5}, "focusChanged": True}
     stub = StubSsap(FOCUSED, after=[pushed])
