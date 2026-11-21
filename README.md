@@ -191,6 +191,12 @@ Fourteen, on purpose: every tool definition costs context in every client.
 | `webos_submit_text` | press the keyboard's Enter in that field (runs the search) | not idempotent |
 | `webos_search_app` | open YouTube straight on its results for a query | idempotent |
 
+Every tool also has an authorization tier, which decides who may call it over HTTP (see
+[What each caller may do](#what-each-caller-may-do)): `read` for `webos_list_tvs`, `webos_get_status`
+and `webos_list_sources`; `power-off` for `webos_set_power` and `webos_set_screen` with `state="off"`;
+`everyday` for the rest, including both of those with `state="on"`. None is `costly`: nothing here is
+a chore to undo, so no tool asks for confirmation.
+
 ### Typing and searching
 
 Typing a search with `webos_send_key` means walking an on-screen keyboard one arrow at a time. Where
@@ -299,12 +305,23 @@ connectors reach it from the internet, so the URL is public; Access is what keep
 | `--public-host` | `MCP_PUBLIC_HOSTS` | none: only loopback Host headers pass, so **Cloudflare's requests get 421** |
 | | `CF_ACCESS_TEAM_DOMAIN`, `CF_ACCESS_AUD` | none: no Access checks |
 | | `MCP_ALLOWED_EMAILS` | anyone Access lets in |
+| | `MCP_ALLOWED_SERVICE_TOKENS` | none: every Access service token gets 403 |
+| | `MCP_AUTOMATION_TIERS` | `read,power-off` |
 
 With Access configured, every request needs a valid `Cf-Access-Jwt-Assertion`; anything else
 gets a plain 403. The server refuses to start on a non-loopback address without Access unless
 you pass `--insecure-no-auth`. `GET /healthz` answers without auth. `remote.py` and `logsafe.py`
 are shared with the sibling servers, from
 [mcp-server-shared](https://github.com/SDNick484/mcp-server-shared).
+
+### What each caller may do
+
+A person (an Access login with an email) and a local caller (stdio, or HTTP without Access) may
+use every tool. An automated caller is an Access **service token**, and it gets in only if its
+client ID (e.g. `token-1.access`) is listed in `MCP_ALLOWED_SERVICE_TOKENS`; any other service
+token gets 403. It may then use only the tiers in `MCP_AUTOMATION_TIERS` (default `read,power-off`:
+it can check the TVs and turn them or their screens off, but not on; add `everyday` for more).
+`costly` is never allowed there, and this server has no costly tools.
 
 ### Setting up Cloudflare
 
@@ -359,6 +376,7 @@ Watch the server while you press Connect: `tail -n 0 -f /var/log/mcp-server-webo
 | Log: `Denied … no Cloudflare Access assertion` | The request didn't come through Access: a local test with `curl`, or another Access app/Bypass policy on the path | Ignore it for local tests; otherwise see step 1's last point |
 | Log: `Denied … Audience doesn't match` / `Invalid issuer` | `CF_ACCESS_AUD` is another app's tag, or the team domain is wrong | Copy both again from the app in step 1 |
 | Log: `Denied … not in MCP_ALLOWED_EMAILS` | You signed in to Access with another address | Make them match |
+| Log: `Denied … unknown caller: no email, and no common_name in MCP_ALLOWED_SERVICE_TOKENS` | An Access service token whose client ID isn't listed | Add it to `MCP_ALLOWED_SERVICE_TOKENS` |
 
 ### As a service on Alpine (Proxmox LXC)
 

@@ -2,7 +2,14 @@
 
 ## [Unreleased]
 
+### Changed
+
+- **Service tokens are refused unless listed.** A Cloudflare Access service token now gets 403 unless its client ID is in the new `MCP_ALLOWED_SERVICE_TOKENS`, and an admitted one (an automated caller) may use only the tiers in `MCP_AUTOMATION_TIERS` (default `read,power-off`). People and local callers are unaffected.
+- `remote.py` synced from mcp-server-shared f4719e3 (per-tool authorization), with `ratelimit.py`.
+
 ### Added
+
+- Every tool has an authorization tier: `read` (`webos_list_tvs`, `webos_get_status`, `webos_list_sources`), `power-off` (`webos_set_power` and `webos_set_screen` with `state="off"`) or `everyday` (the rest, and those two with `state="on"`). No tool is `costly`, so none asks for confirmation.
 
 - `initialize` reports the package version as `serverInfo.version` (it was empty), so a bug report says which build answered.
 - `webos_get_status` with no TV configured adds a `hint` saying how to pair one, instead of an empty list alone.

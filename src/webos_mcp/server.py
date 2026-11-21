@@ -2,6 +2,9 @@
 
 How a decorated function becomes a tool the model can call:
   - ``@mcp.tool()`` registers it; it then appears in the client's ``tools/list``.
+  - ``@tier(...)``, directly under it, says what the tool can do (read, power-off,
+    everyday, costly), so an automated caller can be refused what it may not do.
+    It leaves the schema below as it was (``remote.py`` has how).
   - The function's *docstring* becomes the tool's ``description``. It is the
     model's only documentation, so it is written for the model, not for us.
   - The *signature* becomes the ``inputSchema`` (JSON Schema): ``Literal`` turns
@@ -34,6 +37,7 @@ from typing_extensions import TypedDict
 from . import __version__, keystore, tvs
 from .client import MAX_DELETE, MAX_QUERY, MAX_TEXT, MEDIA_ACTIONS, SEARCH_LINKS, Result, Status, TvClient
 from .config import ALLOWED_KEYS, DEFAULT_APPS, LEFT_OUT_KEYS, KeyName, Settings, load_settings
+from .remote import request_state_security, tier
 from .tools import ACT, ACT_IDEMPOTENT, READ_ONLY
 
 log = logging.getLogger(__name__)
@@ -98,6 +102,8 @@ mcp = MCPServer(
         "text_input; it only reaches system text fields (LG's search), so for YouTube use webos_search_app."
     ),
     lifespan=lifespan,
+    # The sealed answer to a costly tool's confirmation prompt: short-lived and tied to the person who gave it.
+    request_state_security=request_state_security(),
 )
 
 # Tool annotations are behavioral hints sent in tools/list. Clients use them to
@@ -162,6 +168,7 @@ class Source(TypedDict, total=False):
 
 
 @mcp.tool(title="List TVs", annotations=READ_ONLY)
+@tier("read")
 def webos_list_tvs() -> list[TvSummary]:
     """List the configured TVs.
 
@@ -189,6 +196,7 @@ def webos_list_tvs() -> list[TvSummary]:
 
 
 @mcp.tool(title="Get TV status", annotations=READ_ONLY)
+@tier("read")
 async def webos_get_status(tv: TvArg = None) -> StatusReport:
     """Query current TV power state, foreground app or input, and audio configuration.
 
@@ -215,6 +223,7 @@ async def webos_get_status(tv: TvArg = None) -> StatusReport:
 
 
 @mcp.tool(title="Turn a TV on or off", annotations=ACT_IDEMPOTENT)
+@tier(lambda args: "power-off" if args["state"] == "off" else "everyday")
 async def webos_set_power(state: Literal["on", "off"], tv: TvArg = None) -> ActionResult:
     """Turn a TV on via Wake-on-LAN or off to standby.
 
@@ -252,6 +261,7 @@ async def webos_set_power(state: Literal["on", "off"], tv: TvArg = None) -> Acti
 
 
 @mcp.tool(title="Turn a TV's screen on or off", annotations=ACT_IDEMPOTENT)
+@tier(lambda args: "power-off" if args["state"] == "off" else "everyday")
 async def webos_set_screen(state: Literal["on", "off"], tv: TvArg = None) -> ActionResult:
     """Blank or restore the TV display panel without interrupting audio.
 
@@ -271,6 +281,7 @@ async def webos_set_screen(state: Literal["on", "off"], tv: TvArg = None) -> Act
 
 
 @mcp.tool(title="List a TV's sources", annotations=READ_ONLY)
+@tier("read")
 def webos_list_sources(tv: TvArg = None) -> list[Source]:
     """List available apps and physical HDMI inputs on a TV.
 
@@ -287,6 +298,7 @@ def webos_list_sources(tv: TvArg = None) -> list[Source]:
 
 
 @mcp.tool(title="Switch a TV to an app or input", annotations=ACT_IDEMPOTENT)
+@tier("everyday")
 async def webos_select_source(
     source: Annotated[
         str,
@@ -320,6 +332,7 @@ Repeat = Annotated[int, Field(ge=1, le=10, description="How many times to press 
 
 
 @mcp.tool(title="Press a remote key", annotations=ACT)
+@tier("everyday")
 async def webos_send_key(key: KeyName, repeat: Repeat = 1, tv: TvArg = None) -> ActionResult:
     """Send remote control key presses to the TV.
 
@@ -340,6 +353,7 @@ async def webos_send_key(key: KeyName, repeat: Repeat = 1, tv: TvArg = None) -> 
 
 
 @mcp.tool(title="Control playback", annotations=ACT)
+@tier("everyday")
 async def webos_media_control(
     action: Literal["play", "pause", "stop", "rewind", "fast_forward"], tv: TvArg = None
 ) -> ActionResult:
@@ -378,6 +392,7 @@ Count = Annotated[int, Field(ge=1, le=MAX_DELETE, description=f"How many charact
 
 
 @mcp.tool(title="Type into a text field", annotations=ACT)
+@tier("everyday")
 async def webos_insert_text(text: Text, replace: Replace = False, tv: TvArg = None) -> ActionResult:
     """Type text into the TV's focused text field, instead of walking an on-screen keyboard with keys.
 
@@ -401,6 +416,7 @@ async def webos_insert_text(text: Text, replace: Replace = False, tv: TvArg = No
 
 
 @mcp.tool(title="Delete text in a text field", annotations=ACT)
+@tier("everyday")
 async def webos_delete_text(count: Count = 1, tv: TvArg = None) -> ActionResult:
     """Delete characters before the cursor in the TV's focused text field (like Backspace).
 
@@ -418,6 +434,7 @@ async def webos_delete_text(count: Count = 1, tv: TvArg = None) -> ActionResult:
 
 
 @mcp.tool(title="Submit a text field", annotations=ACT)
+@tier("everyday")
 async def webos_submit_text(tv: TvArg = None) -> ActionResult:
     """Press the keyboard's Enter in the TV's focused text field, e.g. to run a search.
 
@@ -443,6 +460,7 @@ Query = Annotated[
 
 
 @mcp.tool(title="Search inside an app", annotations=ACT_IDEMPOTENT)
+@tier("everyday")
 async def webos_search_app(app: SearchApp, query: Query, tv: TvArg = None) -> ActionResult:
     """Open an app straight to its search results for a query (YouTube).
 
@@ -468,6 +486,7 @@ Level = Annotated[int, Field(ge=0, le=100, description="Volume 0-100 (capped per
 
 
 @mcp.tool(title="Set a TV's volume", annotations=ACT_IDEMPOTENT)
+@tier("everyday")
 async def webos_set_volume(level: Level, tv: TvArg = None) -> ActionResult:
     """Set the audio volume level on the TV.
 
@@ -487,6 +506,7 @@ async def webos_set_volume(level: Level, tv: TvArg = None) -> ActionResult:
 
 
 @mcp.tool(title="Mute or unmute a TV", annotations=ACT_IDEMPOTENT)
+@tier("everyday")
 async def webos_set_mute(muted: bool, tv: TvArg = None) -> ActionResult:
     """Mute or unmute the TV audio output.
 
