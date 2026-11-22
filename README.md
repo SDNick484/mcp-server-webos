@@ -310,7 +310,9 @@ connectors reach it from the internet, so the URL is public; Access is what keep
 
 With Access configured, every request needs a valid `Cf-Access-Jwt-Assertion`; anything else
 gets a plain 403. The server refuses to start on a non-loopback address without Access unless
-you pass `--insecure-no-auth`. `GET /healthz` answers without auth. `remote.py` and `logsafe.py`
+you pass `--insecure-no-auth`. `GET /healthz` and `GET /webos/mcp/healthz` (the one a tunnel that
+routes only `/webos/mcp` reaches) answer without auth, with the commit the install script stamped
+(`"commit"`, `"repo"`; from `/opt/mcp-server-webos/COMMIT`). `remote.py` and `logsafe.py`
 are shared with the sibling servers, from
 [mcp-server-shared](https://github.com/SDNick484/mcp-server-shared).
 
@@ -360,7 +362,8 @@ This is the setup that works, verified with Claude Code and the Claude app conne
 4. **Test**, then add `https://mcp.example.com/webos/mcp` as a custom connector in Claude (and
    `claude mcp add --transport http webos <url>` for Claude Code):
    ```sh
-   curl -s http://192.168.1.10:8715/healthz                               # {"status": "ok"}
+   curl -s http://192.168.1.10:8715/healthz                               # {"status": "ok", "commit": ...}
+   curl -s https://mcp.example.com/webos/mcp/healthz                    # the same, through the tunnel
    curl -si -X POST https://mcp.example.com/webos/mcp -d '{}' | head -5 # 401 + www-authenticate
    ```
 
