@@ -9,6 +9,7 @@
 
 ### Added
 
+- `GET /webos/mcp/healthz`, the health check under the MCP path (the only one a tunnel routing `/webos/mcp` reaches), and both health routes report the installed `commit` and `repo` from `/opt/mcp-server-webos/COMMIT`, which `deploy/alpine/install.sh` now writes (pinning the default source to `main`'s current commit first). `remote.py` and the new `deploy/alpine/commit.sh` synced from mcp-server-shared a48209b; the install needs `git`.
 - Every tool has an authorization tier: `read` (`webos_list_tvs`, `webos_get_status`, `webos_list_sources`), `power-off` (`webos_set_power` and `webos_set_screen` with `state="off"`) or `everyday` (the rest, and those two with `state="on"`). No tool is `costly`, so none asks for confirmation.
 
 - `initialize` reports the package version as `serverInfo.version` (it was empty), so a bug report says which build answered.
