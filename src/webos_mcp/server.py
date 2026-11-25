@@ -38,7 +38,7 @@ from . import __version__, keystore, tvs
 from .client import MAX_DELETE, MAX_QUERY, MAX_TEXT, MEDIA_ACTIONS, SEARCH_LINKS, Result, Status, TvClient
 from .config import ALLOWED_KEYS, DEFAULT_APPS, LEFT_OUT_KEYS, KeyName, Settings, load_settings
 from .remote import request_state_security, tier
-from .tools import ACT, ACT_IDEMPOTENT, READ_ONLY
+from .tools import ACT, ACT_IDEMPOTENT, READ_ONLY, trim_tools
 
 log = logging.getLogger(__name__)
 
@@ -521,6 +521,10 @@ async def webos_set_mute(muted: bool, tv: TvArg = None) -> ActionResult:
     c = registry().pick(tv)
     async with c.lock:
         return _result(c, await c.set_mute(muted))
+
+
+# Every tool is registered by now: shorten what tools/list sends (see tools.py).
+trim_tools(mcp)
 
 
 # ---------------------------------------------------------------------------
